@@ -265,6 +265,13 @@
       </div>
     </div>
 
+    <!-- ROW 4: Top 10 Ofensores - Troca de Transportadora (largura total) -->
+    <div class="card">
+      <h2>Top 10 Ofensores — Troca de Transportadora</h2>
+      <p class="sub">Origens que mais trocam de transportadora (nº absoluto de trocas no período)</p>
+      <div class="chart-wrap pareto"><canvas id="chartParetoTroca"></canvas></div>
+    </div>
+
   </div>
 
   <footer>Gerado em <span id="geradoEm"></span> · dados de exemplo/placeholder onde indicado acima</footer>
@@ -631,6 +638,110 @@ const ENTREVISTA = {
   T3:  { '2026-09-09': { tlsTotal: 25, tlsComPendencia: 19 } }
 };
 
+// Top 10 Ofensores — Troca de Transportadora, quebrado POR DIA e por turno
+// (2026-08-15 a 2026-09-09), extraído em 2026-09-14. Mesma lógica de
+// agregação por intervalo do DELAY_OFFENDERS_DAILY/ABS_OFFENDERS_DAILY.
+//
+// Fonte: meli-bi-data.WHOWNER.BT_SHP_FOS_REAUTHORIZATION_BY_USER (fluxo de
+// reautorização de transportadora, streaming). "ORIGEM" = OUTBOUND_CHANNEL_FROM
+// (canal/hub em que o pacote estava roteado antes da troca); "TROCAS" =
+// contagem de eventos onde OUTBOUND_CHANNEL_FROM != OUTBOUND_CHANNEL_TO
+// (mudança real de canal/transportadora), filtrado a FACILITY='BRXSP24' e
+// SITE='MLB'. Turno derivado por faixa de hora sobre REAUTHORIZATION_DATE,
+// igual às demais métricas (T1 06h-14h, T2 14h-22h, T3 22h-06h).
+//
+// Categorias fixas = as 10 origens com mais trocas no período inteiro
+// (15/08 a 09/09); o resto cai em "Outros". Esta é uma definição própria
+// deste relatório — não foi validada contra o painel "Troca de
+// Transportadora" do Grid (grid.adminml.com), cujos números usam algum
+// filtro/janela adicional que não foi possível reproduzir só pela tabela.
+const TROCA_TRANSPORTADORA_DAILY = {
+  T1: {
+    '2026-08-15': {'loghub':228,'Outros':136,'imihub1':104,'jadhub':77,'domhub1':73,'imisl1':56,'xsp9_2':19,'xsp9_1':13,'xsp9_6':10,'jetsl1':3},
+    '2026-08-16': {'Outros':133,'loghub':26,'jadhub':16,'xsp9_2':13,'jetsl1':5,'xsp9_1':4,'xsp9_6':2,'domhub1':1},
+    '2026-08-17': {'loghub':188,'domhub1':127,'imihub1':116,'Outros':107,'jetsl1':95,'jadhub':38,'xsp9_2':19,'imisl1':15,'xsp9_6':8,'xsp9_1':2},
+    '2026-08-18': {'loghub':217,'imihub1':177,'domhub1':121,'jadhub':111,'Outros':37,'xsp9_2':32,'imisl1':31,'xsp9_1':10,'jetsl1':7},
+    '2026-08-19': {'jadhub':208,'loghub':179,'imihub1':135,'domhub1':114,'Outros':76,'imisl1':37,'xsp9_2':16,'jetsl1':9,'xsp9_6':7,'xsp9_1':5},
+    '2026-08-20': {'loghub':265,'jadhub':234,'imihub1':201,'domhub1':171,'Outros':150,'imisl1':61,'xsp9_2':20,'xsp9_1':8,'xsp9_6':5,'jetsl1':4},
+    '2026-08-21': {'jetsl1':368,'loghub':298,'imihub1':221,'jadhub':210,'domhub1':138,'Outros':99,'imisl1':69,'xsp9_2':38,'xsp9_1':21,'xsp9_6':16,'jethub1':5},
+    '2026-08-22': {'jetsl1':541,'jadhub':255,'loghub':222,'domhub1':214,'imihub1':185,'xsp9_2':128,'xsp9_1':95,'Outros':73,'imisl1':73,'jethub1':25,'xsp9_6':10},
+    '2026-08-23': {'jetsl1':386,'Outros':248,'jadhub':246,'domhub1':86,'xsp9_2':58,'loghub':22,'xsp9_6':12,'xsp9_1':9,'jethub1':6,'imisl1':5,'imihub1':3},
+    '2026-08-24': {'jetsl1':638,'loghub':316,'xsp9_2':277,'jethub1':268,'imihub1':217,'jadhub':191,'domhub1':108,'imisl1':59,'Outros':59,'xsp9_1':16,'xsp9_6':8},
+    '2026-08-25': {'jetsl1':1122,'xsp9_2':316,'jadhub':200,'loghub':196,'jethub1':139,'domhub1':105,'Outros':103,'imihub1':38,'imisl1':19,'xsp9_6':11,'xsp9_1':7},
+    '2026-08-26': {'jetsl1':695,'jadhub':336,'imihub1':332,'Outros':186,'loghub':141,'domhub1':137,'jethub1':70,'xsp9_2':62,'imisl1':48,'xsp9_1':23,'xsp9_6':17},
+    '2026-08-27': {'jetsl1':907,'Outros':325,'jadhub':257,'loghub':238,'imihub1':233,'domhub1':148,'imisl1':143,'xsp9_2':109,'jethub1':71,'xsp9_1':31,'xsp9_6':30},
+    '2026-08-28': {'jetsl1':1552,'loghub':246,'jadhub':206,'imihub1':194,'imisl1':194,'Outros':176,'domhub1':117,'jethub1':107,'xsp9_2':88,'xsp9_1':34,'xsp9_6':16},
+    '2026-08-29': {'jetsl1':1504,'jadhub':314,'loghub':312,'domhub1':221,'xsp9_2':166,'Outros':164,'imihub1':157,'imisl1':83,'jethub1':73,'xsp9_1':39,'xsp9_6':27},
+    '2026-08-30': {'jadhub':266,'imihub1':226,'Outros':223,'loghub':185,'domhub1':148,'imisl1':109,'jetsl1':97,'xsp9_2':77,'xsp9_1':23,'xsp9_6':17,'jethub1':17},
+    '2026-08-31': {'jetsl1':1206,'jadhub':266,'imihub1':232,'loghub':135,'domhub1':107,'Outros':85,'xsp9_2':67,'imisl1':51,'jethub1':47,'xsp9_1':23,'xsp9_6':9},
+    '2026-09-01': {'jetsl1':1210,'loghub':241,'jadhub':130,'xsp9_2':128,'jethub1':126,'domhub1':91,'Outros':74,'imihub1':72,'imisl1':55,'xsp9_1':34,'xsp9_6':14},
+    '2026-09-02': {'Outros':283,'loghub':226,'jetsl1':204,'jadhub':158,'imihub1':149,'xsp9_2':130,'domhub1':126,'xsp9_1':41,'imisl1':35,'jethub1':33,'xsp9_6':33},
+    '2026-09-03': {'Outros':329,'jadhub':238,'jetsl1':177,'domhub1':95,'loghub':84,'imihub1':75,'xsp9_2':48,'xsp9_6':25,'imisl1':24,'jethub1':22,'xsp9_1':18},
+    '2026-09-04': {'jetsl1':371,'loghub':307,'Outros':293,'jadhub':286,'xsp9_2':148,'imihub1':143,'jethub1':68,'domhub1':61,'imisl1':52,'xsp9_6':36,'xsp9_1':28},
+    '2026-09-05': {'jetsl1':320,'loghub':277,'jadhub':202,'xsp9_2':182,'Outros':176,'domhub1':143,'imihub1':120,'jethub1':57,'xsp9_6':30,'xsp9_1':23,'imisl1':18},
+    '2026-09-06': {'jetsl1':359,'jadhub':199,'Outros':150,'xsp9_2':96,'loghub':79,'domhub1':21,'jethub1':19,'xsp9_6':18,'imihub1':13,'xsp9_1':12,'imisl1':3},
+    '2026-09-07': {'loghub':244,'imihub1':223,'xsp9_2':155,'jadhub':149,'jetsl1':132,'domhub1':86,'Outros':57,'jethub1':27,'imisl1':24,'xsp9_1':20,'xsp9_6':13},
+    '2026-09-08': {'loghub':306,'xsp9_2':134,'imihub1':105,'jadhub':86,'Outros':70,'domhub1':51,'jetsl1':21,'xsp9_1':19,'xsp9_6':16,'imisl1':15,'jethub1':14},
+    '2026-09-09': {'jetsl1':268,'loghub':86,'imihub1':57,'Outros':57,'jadhub':56,'domhub1':54,'xsp9_2':42,'jethub1':29,'xsp9_6':8,'xsp9_1':6,'imisl1':5},
+  },
+  T2: {
+    '2026-08-15': {'loghub':319,'jadhub':206,'Outros':201,'imihub1':78,'domhub1':46,'xsp9_2':33,'imisl1':17,'xsp9_1':10,'xsp9_6':10},
+    '2026-08-16': {'imihub1':286,'jadhub':124,'Outros':115,'loghub':100,'xsp9_2':24,'imisl1':19,'domhub1':13,'xsp9_1':9,'xsp9_6':3},
+    '2026-08-17': {'loghub':327,'jadhub':218,'imihub1':166,'Outros':160,'imisl1':64,'domhub1':33,'jetsl1':19,'xsp9_2':18,'xsp9_1':15,'xsp9_6':12},
+    '2026-08-18': {'jadhub':247,'loghub':138,'imihub1':107,'Outros':88,'imisl1':56,'xsp9_2':41,'domhub1':36,'xsp9_1':15,'jetsl1':3,'xsp9_6':2},
+    '2026-08-19': {'imihub1':404,'loghub':321,'jadhub':285,'Outros':222,'imisl1':141,'xsp9_2':44,'domhub1':31,'xsp9_6':6,'xsp9_1':5,'jetsl1':2},
+    '2026-08-20': {'jadhub':428,'imihub1':323,'loghub':250,'Outros':137,'domhub1':109,'imisl1':92,'xsp9_2':36,'xsp9_6':10,'xsp9_1':9,'jetsl1':7,'jethub1':1},
+    '2026-08-21': {'jadhub':239,'loghub':158,'imihub1':157,'jetsl1':115,'Outros':113,'domhub1':101,'imisl1':83,'xsp9_2':37,'xsp9_6':10,'jethub1':8,'xsp9_1':6},
+    '2026-08-22': {'jadhub':343,'jetsl1':229,'loghub':225,'imihub1':158,'Outros':79,'xsp9_2':78,'domhub1':73,'imisl1':64,'xsp9_1':16,'xsp9_6':13,'jethub1':8},
+    '2026-08-23': {'xsp9_2':569,'jadhub':308,'jetsl1':208,'Outros':110,'domhub1':57,'xsp9_1':44,'loghub':15,'xsp9_6':14,'jethub1':11,'imihub1':5},
+    '2026-08-24': {'xsp9_2':470,'jetsl1':280,'jadhub':227,'loghub':205,'Outros':83,'domhub1':80,'imisl1':38,'imihub1':35,'jethub1':34,'xsp9_1':18,'xsp9_6':5},
+    '2026-08-25': {'xsp9_2':411,'jetsl1':312,'Outros':151,'jadhub':130,'imihub1':120,'domhub1':109,'loghub':94,'jethub1':69,'imisl1':55,'xsp9_6':15,'xsp9_1':12},
+    '2026-08-26': {'jetsl1':464,'jadhub':320,'loghub':229,'Outros':146,'domhub1':140,'imihub1':140,'jethub1':106,'xsp9_2':103,'imisl1':60,'xsp9_1':18,'xsp9_6':15},
+    '2026-08-27': {'jetsl1':849,'jadhub':256,'Outros':126,'domhub1':110,'imihub1':110,'xsp9_2':89,'loghub':84,'imisl1':83,'jethub1':41,'xsp9_1':12,'xsp9_6':10},
+    '2026-08-28': {'jetsl1':1171,'jadhub':262,'Outros':146,'jethub1':134,'xsp9_2':105,'imihub1':103,'domhub1':97,'loghub':88,'imisl1':83,'xsp9_1':27,'xsp9_6':21},
+    '2026-08-29': {'jadhub':357,'jetsl1':306,'loghub':132,'domhub1':113,'Outros':76,'xsp9_2':60,'imihub1':28,'jethub1':13,'xsp9_1':11,'xsp9_6':4,'imisl1':3},
+    '2026-08-30': {'jadhub':199,'domhub1':98,'Outros':91,'loghub':47,'jetsl1':33,'xsp9_2':33,'jethub1':24,'imihub1':24,'xsp9_6':21,'xsp9_1':11,'imisl1':5},
+    '2026-08-31': {'jetsl1':511,'xsp9_2':189,'jadhub':175,'loghub':170,'jethub1':97,'Outros':88,'imihub1':39,'imisl1':35,'domhub1':32,'xsp9_6':11,'xsp9_1':11},
+    '2026-09-01': {'jetsl1':317,'jadhub':218,'xsp9_2':213,'domhub1':205,'loghub':189,'Outros':106,'imihub1':85,'jethub1':73,'imisl1':27,'xsp9_1':21,'xsp9_6':18},
+    '2026-09-02': {'loghub':135,'domhub1':133,'jadhub':128,'jetsl1':87,'imihub1':74,'xsp9_2':57,'Outros':37,'jethub1':36,'imisl1':24,'xsp9_1':8,'xsp9_6':4},
+    '2026-09-03': {'loghub':322,'Outros':182,'jetsl1':161,'imihub1':138,'jadhub':107,'domhub1':105,'xsp9_2':95,'jethub1':49,'imisl1':43,'xsp9_1':15,'xsp9_6':10},
+    '2026-09-04': {'loghub':417,'jetsl1':347,'xsp9_2':222,'jadhub':220,'Outros':153,'jethub1':131,'imihub1':113,'domhub1':104,'imisl1':33,'xsp9_6':19,'xsp9_1':16},
+    '2026-09-05': {'loghub':378,'jadhub':232,'imihub1':123,'domhub1':112,'Outros':111,'jetsl1':83,'xsp9_2':73,'jethub1':24,'imisl1':23,'xsp9_1':13,'xsp9_6':7},
+    '2026-09-06': {'xsp9_2':224,'loghub':215,'jetsl1':145,'Outros':138,'jadhub':107,'imihub1':77,'jethub1':69,'imisl1':34,'domhub1':29,'xsp9_1':20,'xsp9_6':15},
+    '2026-09-07': {'loghub':605,'jadhub':197,'domhub1':151,'Outros':97,'imihub1':77,'xsp9_2':44,'xsp9_1':39,'xsp9_6':32,'jetsl1':21,'imisl1':17,'jethub1':12},
+    '2026-09-08': {'loghub':126,'jadhub':106,'domhub1':98,'imihub1':81,'xsp9_2':74,'Outros':60,'jetsl1':20,'xsp9_1':17,'imisl1':14,'jethub1':4,'xsp9_6':2},
+    '2026-09-09': {'loghub':152,'imihub1':135,'jadhub':108,'Outros':101,'domhub1':54,'jetsl1':26,'xsp9_6':26,'xsp9_2':20,'imisl1':18,'jethub1':17,'xsp9_1':12},
+  },
+  T3: {
+    '2026-08-15': {'jadhub':102,'Outros':72,'xsp9_1':30,'domhub1':22,'xsp9_6':19,'xsp9_2':15,'loghub':13,'imihub1':9},
+    '2026-08-16': {'Outros':107,'jadhub':43,'xsp9_2':17,'xsp9_6':15,'domhub1':13,'loghub':13,'jetsl1':10,'xsp9_1':9,'imihub1':2},
+    '2026-08-17': {'Outros':58,'loghub':42,'jadhub':31,'xsp9_2':17,'xsp9_1':17,'xsp9_6':15,'jetsl1':15,'imihub1':9,'domhub1':6,'imisl1':3},
+    '2026-08-18': {'Outros':111,'loghub':82,'jadhub':56,'imihub1':33,'xsp9_2':30,'domhub1':28,'xsp9_1':16,'xsp9_6':15,'imisl1':14,'jetsl1':4},
+    '2026-08-19': {'loghub':120,'jadhub':119,'Outros':89,'xsp9_1':37,'domhub1':36,'imihub1':27,'xsp9_2':27,'xsp9_6':15,'jetsl1':8,'imisl1':2},
+    '2026-08-20': {'jadhub':190,'Outros':156,'xsp9_6':61,'loghub':53,'xsp9_1':39,'domhub1':38,'imihub1':36,'xsp9_2':24,'jetsl1':4,'imisl1':1},
+    '2026-08-21': {'Outros':154,'jadhub':92,'jetsl1':81,'loghub':55,'domhub1':41,'xsp9_1':20,'xsp9_6':19,'xsp9_2':14,'imihub1':10,'imisl1':6,'jethub1':1},
+    '2026-08-22': {'jadhub':507,'jetsl1':157,'Outros':103,'loghub':63,'xsp9_6':53,'domhub1':49,'imihub1':46,'xsp9_2':38,'xsp9_1':32,'imisl1':6},
+    '2026-08-23': {'jadhub':410,'Outros':176,'xsp9_1':67,'jetsl1':65,'domhub1':51,'xsp9_6':46,'xsp9_2':31,'loghub':30,'imisl1':3,'imihub1':3,'jethub1':2},
+    '2026-08-24': {'jadhub':601,'xsp9_2':226,'jethub1':171,'Outros':70,'xsp9_1':53,'jetsl1':40,'xsp9_6':35,'domhub1':29,'imihub1':25,'loghub':10},
+    '2026-08-25': {'xsp9_2':745,'jetsl1':619,'Outros':143,'jadhub':99,'jethub1':84,'loghub':73,'imisl1':52,'imihub1':42,'xsp9_1':40,'xsp9_6':26,'domhub1':12},
+    '2026-08-26': {'jetsl1':290,'jadhub':217,'loghub':175,'Outros':126,'jethub1':107,'xsp9_2':88,'xsp9_1':69,'imihub1':41,'imisl1':37,'xsp9_6':31,'domhub1':23},
+    '2026-08-27': {'jadhub':311,'jetsl1':283,'Outros':236,'xsp9_2':86,'jethub1':61,'imihub1':46,'domhub1':46,'xsp9_6':45,'xsp9_1':42,'loghub':37,'imisl1':25},
+    '2026-08-28': {'jetsl1':609,'jadhub':471,'xsp9_2':233,'Outros':206,'jethub1':197,'loghub':89,'domhub1':62,'imihub1':36,'xsp9_6':35,'imisl1':30,'xsp9_1':29},
+    '2026-08-29': {'jetsl1':624,'jadhub':518,'Outros':242,'loghub':98,'domhub1':97,'xsp9_2':82,'imisl1':70,'imihub1':47,'jethub1':29,'xsp9_1':23,'xsp9_6':22},
+    '2026-08-30': {'jadhub':445,'jetsl1':414,'Outros':167,'loghub':123,'domhub1':98,'xsp9_2':54,'imihub1':43,'jethub1':17,'xsp9_6':15,'imisl1':14,'xsp9_1':14},
+    '2026-08-31': {'Outros':81,'loghub':64,'domhub1':61,'jadhub':51,'imihub1':36,'xsp9_2':30,'jetsl1':25,'xsp9_6':14,'xsp9_1':7,'jethub1':7,'imisl1':6},
+    '2026-09-01': {'jetsl1':363,'loghub':276,'jadhub':164,'Outros':155,'domhub1':102,'xsp9_2':84,'xsp9_6':55,'xsp9_1':55,'imihub1':51,'jethub1':43,'imisl1':19},
+    '2026-09-02': {'jadhub':280,'jetsl1':229,'loghub':179,'Outros':178,'xsp9_2':175,'domhub1':163,'imihub1':47,'imisl1':42,'xsp9_1':34,'jethub1':27,'xsp9_6':18},
+    '2026-09-03': {'Outros':223,'jetsl1':211,'loghub':178,'jadhub':177,'xsp9_2':155,'domhub1':84,'xsp9_1':38,'imihub1':38,'jethub1':28,'imisl1':25,'xsp9_6':20},
+    '2026-09-04': {'jadhub':244,'Outros':230,'loghub':170,'jetsl1':145,'xsp9_2':137,'imihub1':84,'jethub1':72,'domhub1':50,'imisl1':33,'xsp9_1':25,'xsp9_6':21},
+    '2026-09-05': {'Outros':298,'jetsl1':237,'loghub':208,'jadhub':180,'xsp9_2':150,'imihub1':72,'jethub1':68,'domhub1':54,'xsp9_1':41,'xsp9_6':29,'imisl1':21},
+    '2026-09-06': {'Outros':264,'loghub':232,'jadhub':212,'xsp9_2':131,'jetsl1':116,'imihub1':66,'domhub1':63,'jethub1':35,'xsp9_1':22,'xsp9_6':19,'imisl1':10},
+    '2026-09-07': {'jadhub':279,'loghub':117,'xsp9_2':110,'jetsl1':96,'Outros':76,'imihub1':66,'domhub1':39,'jethub1':27,'xsp9_1':19,'xsp9_6':10,'imisl1':8},
+    '2026-09-08': {'loghub':197,'jadhub':137,'Outros':98,'xsp9_2':81,'jetsl1':77,'imihub1':35,'jethub1':25,'domhub1':15,'xsp9_1':15,'xsp9_6':13,'imisl1':12},
+    '2026-09-09': {'loghub':126,'Outros':120,'jadhub':116,'domhub1':66,'xsp9_6':36,'xsp9_2':33,'jetsl1':30,'xsp9_1':25,'jethub1':10,'imihub1':9,'imisl1':2},
+  },
+};
+
 /* ==========================================================================
    A partir daqui é só motor de render — não precisa editar pra atualizar
    dados, só pra mudar layout/comportamento.
@@ -683,9 +794,10 @@ function paretoOrdenado(obj){
   return Object.entries(obj || {}).sort((a,b) => b[1] - a[1]);
 }
 
-// Soma um pareto diário (DELAY_OFFENDERS_DAILY / ABS_OFFENDERS_DAILY) por
-// TODAS as datas do intervalo selecionado. Se turno = ALL, soma T1+T2+T3
-// (evita duplicar os dados guardando um "ALL" pré-calculado à parte).
+// Soma um pareto diário (DELAY_OFFENDERS_DAILY / ABS_OFFENDERS_DAILY /
+// TROCA_TRANSPORTADORA_DAILY) por TODAS as datas do intervalo selecionado.
+// Se turno = ALL, soma T1+T2+T3 (evita duplicar os dados guardando um
+// "ALL" pré-calculado à parte).
 function somarOffendersNoPeriodo(dailyData, turno, datas){
   const turnos = turno === 'ALL' ? ['T1','T2','T3'] : [turno];
   const total = {};
@@ -906,6 +1018,30 @@ function renderEntrevista(datas){
   });
 }
 
+function renderParetoTroca(datas){
+  destruir('paretoTroca');
+  const obj = somarOffendersNoPeriodo(TROCA_TRANSPORTADORA_DAILY, turnoAtual, datas);
+  const entries = paretoOrdenado(obj);
+  charts.paretoTroca = new Chart(document.getElementById('chartParetoTroca'), {
+    type:'bar',
+    data:{
+      labels: entries.map(e => wrapLabel(e[0], 30)),
+      datasets:[{ data: entries.map(e=>e[1]), backgroundColor:'#111', borderRadius:4,
+        datalabels: { display:true, anchor:'end', align:'end', clip:false, color:'#111', font:{size:9,weight:'600'}, formatter:v => v.toLocaleString('pt-BR') }
+      }]
+    },
+    options:{
+      indexAxis:'y', responsive:true, maintainAspectRatio:false,
+      layout:{ padding:{ right:44, left:4 } },
+      plugins:{ legend:{display:false} },
+      scales:{
+        x:{ ticks:{font:fontBase}, grid:{color:'#F0F0F0'} },
+        y:{ ticks:{font:{family:'Inter',size:9}, align:'start', crossAlign:'far', autoSkip:false}, grid:{display:false} }
+      }
+    }
+  });
+}
+
 function renderTudo(){
   const inicio = document.getElementById('dataInicio').value;
   const fim = document.getElementById('dataFim').value;
@@ -917,7 +1053,7 @@ function renderTudo(){
 
   const temReal = ultimoDisponivel(RAW_DATA, turnoAtual, datas);
   document.getElementById('avisoDados').textContent = temReal
-    ? 'Dados extraídos do BigQuery/Sheets em 2026-09-10. Paretos somam o intervalo selecionado; Entrevista de ABS é o snapshot mais recente (' + fmtLabel(temReal.data) + ').'
+    ? 'Dados extraídos do BigQuery/Sheets em 2026-09-10 (Troca de Transportadora em 2026-09-14). Paretos somam o intervalo selecionado; Entrevista de ABS é o snapshot mais recente (' + fmtLabel(temReal.data) + ').'
     : '⚠️ Sem dado para este turno/período — confira o objeto RAW_DATA no início do arquivo.';
 
   renderDotOot(datas);
@@ -925,6 +1061,7 @@ function renderTudo(){
   renderAbs(datas);
   renderParetoAbs(datas);
   renderEntrevista(datas);
+  renderParetoTroca(datas);
 }
 
 function montarPills(){

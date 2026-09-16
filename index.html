@@ -195,6 +195,66 @@
     font-size:11px;
     margin-bottom:14px;
   }
+
+
+  /* ---------- filtros específicos de ABS ---------- */
+  .abs-filtros{
+    display:grid;
+    grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;
+    gap:8px;
+    align-items:end;
+    margin:10px 0 12px;
+    padding:10px;
+    background:var(--cinza-claro);
+    border-radius:10px;
+  }
+  .abs-filtro-campo{display:flex; flex-direction:column; gap:4px; min-width:0;}
+  .abs-filtro-campo label{
+    font-size:10px;
+    font-weight:700;
+    color:#555;
+    text-transform:uppercase;
+    letter-spacing:.04em;
+  }
+  .abs-filtro-campo select{
+    width:100%;
+    min-width:0;
+    border:1px solid var(--borda);
+    border-radius:8px;
+    padding:7px 9px;
+    background:var(--branco);
+    color:var(--preto);
+    font-family:'Inter',sans-serif;
+    font-size:11px;
+  }
+  .abs-filtro-campo select:disabled{color:var(--cinza); background:#FAFAFA; cursor:not-allowed;}
+  #limparAbsFiltros{
+    border:1px solid var(--borda);
+    border-radius:8px;
+    padding:7px 10px;
+    background:var(--branco);
+    color:var(--preto);
+    font-family:'Inter',sans-serif;
+    font-size:11px;
+    font-weight:600;
+    cursor:pointer;
+  }
+  #limparAbsFiltros:hover{border-color:#B8BBC1;}
+  #limparAbsFiltros:disabled{opacity:.45; cursor:not-allowed;}
+  .abs-filtro-ajuda{
+    grid-column:1 / -1;
+    margin:0;
+    color:var(--cinza);
+    font-size:10px;
+  }
+  .aviso.carregando{background:#F5F7FF; border-color:#B9C3FF;}
+  .aviso.erro{background:#FFF0F0; border-color:#E57373; color:#8A1C1C; white-space:pre-line;}
+
+  @media(max-width:600px){
+    .abs-filtros{grid-template-columns:1fr;}
+    #limparAbsFiltros{width:100%;}
+  }
+
 </style>
 </head>
 <body>
@@ -213,9 +273,9 @@
     <div class="pills" id="turnoPills"></div>
     <div class="datas">
       <span>De</span>
-      <input type="date" id="dataInicio" min="2026-08-15" max="2026-09-13" />
+      <input type="date" id="dataInicio" />
       <span>até</span>
-      <input type="date" id="dataFim" min="2026-08-15" max="2026-09-13" />
+      <input type="date" id="dataFim" />
     </div>
   </div>
 
@@ -244,7 +304,23 @@
     <!-- ROW 2: ABS% (largura total, mais horizontal) -->
     <div class="card">
       <h2><span class="dot-chip chip-azul"></span>ABS%</h2>
-      <p class="sub">Target: 12%</p>
+      <p class="sub">Target: 12% · filtros abaixo afetam somente os indicadores de ABS</p>
+      <div class="abs-filtros" aria-label="Filtros de ABS">
+        <div class="abs-filtro-campo">
+          <label for="supervisorAbs">Supervisor</label>
+          <select id="supervisorAbs" disabled>
+            <option value="">Todos os supervisores</option>
+          </select>
+        </div>
+        <div class="abs-filtro-campo">
+          <label for="tlAbs">TL</label>
+          <select id="tlAbs" disabled>
+            <option value="">Selecione um Supervisor</option>
+          </select>
+        </div>
+        <button type="button" id="limparAbsFiltros" disabled>Limpar</button>
+        <p class="abs-filtro-ajuda" id="absFiltroAjuda">O TL é liberado depois que um Supervisor é selecionado.</p>
+      </div>
       <div class="chart-wrap"><canvas id="chartAbs"></canvas></div>
     </div>
 
@@ -260,7 +336,7 @@
         <p class="sub">TLs sem pendência</p>
         <div class="chart-wrap donut">
           <canvas id="chartEntrevista"></canvas>
-          <div class="donut-center"><b id="entrevistaPct">—</b><small>completo</small></div>
+          <div class="donut-center"><b id="entrevistaPct">—</b><small id="entrevistaLegenda">completo</small></div>
         </div>
       </div>
     </div>
@@ -274,544 +350,175 @@
 
   </div>
 
-  <footer>Gerado em <span id="geradoEm"></span> · dados de exemplo/placeholder onde indicado acima</footer>
+  <footer>Dados gerados pelo Apps Script em <span id="geradoEm">—</span></footer>
 
 </div>
 
 <script>
 /* ============================================================================
-   DADOS — extraídos direto do BigQuery/Sheets em 2026-09-10, com atualização
-   em 2026-09-14 estendendo a cobertura de 2026-08-15 até 2026-09-13 (o dia
-   09-14 em si fica de fora por ainda estar incompleto no momento da extração).
-   ----------------------------------------------------------------------------
-   Este arquivo NÃO tem backend: ele só lê os objetos abaixo. Pra atualizar o
-   relatório num outro dia, alguém precisa rodar de novo as mesmas
-   queries/fonte e colar os novos valores aqui.
+   CONFIGURAÇÃO DO BACKEND
+   Cole abaixo a URL do Web App do Apps Script, terminada em /exec.
+   Exemplo: https://script.google.com/macros/s/SEU_DEPLOYMENT_ID/exec
 
-   Fontes usadas (todas validadas/batidas contra os números confirmados por
-   você: ABS 17,8% e DOT/OOT 97,72% do dia 09/09):
-     - DOT/OOT, expedido, delay, pareto de delay (RESPONSAVEL):
-       meli-bi-data.SBOX_SORTATIONCENTERBRXSP9.OOT_SORTATION_CENTER_BRXSP24
-       (campo CPT_DATE; turno = faixa de hora sobre CPT_DATE:
-        T1 06h-14h, T2 14h-22h, T3 22h-06h)
-     - ABS geral, por turno e pareto de motivo: meli-sbox.SORTATIONXSP23.PD_BRXSP24
-       (mesma query validada por você pra ABS_Geral/ABS_Setor/Lista_Casos)
-     - Entrevista de ABS (total de TLs / TLs com pendência): recalculado a
-       partir da Lista_Casos (PD_BRXSP24) + aba "Output Entrevista" da
-       planilha, replicando a mesma regra do buildEntrevistaABS_ do Apps
-       Script (Falta Injustificada/Atestado ABS do mês atual, já descontando
-       quem já foi entrevistado, e só contando quem já "voltou" ao trabalho).
-
-   Pequena nota de transparência: como PD_BRXSP24/a view de DOT são
-   atualizadas ao vivo, os totais podem variar em poucas unidades se você
-   rodar de novo agora (a extração continua recebendo registros). Os valores
-   abaixo foram todos puxados na mesma janela de tempo, em 2026-09-10.
+   Também é possível abrir uma vez com ?api=URL_CODIFICADA. O navegador salva a
+   URL localmente para as próximas visitas.
 ============================================================================ */
-
-const RAW_DATA = {
-  ALL: {
-    '2026-08-15': { dot: 74.50, oot: 78.66, expedido: 41631,  delay: 10615, abs: 27.86 },
-    '2026-08-16': { dot: 96.81, oot: 96.81, expedido: 45499,  delay: 1452,  abs: 32.08 },
-    '2026-08-17': { dot: 93.38, oot: 93.42, expedido: 31225,  delay: 2067,  abs: 31.08 },
-    '2026-08-18': { dot: 90.12, oot: 90.56, expedido: 52566,  delay: 5193,  abs: 23.17 },
-    '2026-08-19': { dot: 90.20, oot: 90.22, expedido: 65910,  delay: 6458,  abs: 20.43 },
-    '2026-08-20': { dot: 93.05, oot: 93.05, expedido: 70464,  delay: 4898,  abs: 25.72 },
-    '2026-08-21': { dot: 80.11, oot: 80.08, expedido: 73139,  delay: 14544, abs: 26.72 },
-    '2026-08-22': { dot: 83.26, oot: 83.34, expedido: 78946,  delay: 13218, abs: 25.55 },
-    '2026-08-23': { dot: 97.47, oot: 98.20, expedido: 44490,  delay: 1127,  abs: 29.17 },
-    '2026-08-24': { dot: 85.56, oot: 85.69, expedido: 86419,  delay: 12483, abs: 25.59 },
-    '2026-08-25': { dot: 89.47, oot: 89.47, expedido: 91867,  delay: 9670,  abs: 25.15 },
-    '2026-08-26': { dot: 86.28, oot: 86.28, expedido: 108755, delay: 14923, abs: 22.96 },
-    '2026-08-27': { dot: 86.11, oot: 86.24, expedido: 135057, delay: 18761, abs: 24.14 },
-    '2026-08-28': { dot: 83.28, oot: 83.28, expedido: 139315, delay: 23290, abs: 27.16 },
-    '2026-08-29': { dot: 79.59, oot: 79.59, expedido: 115483, delay: 23574, abs: 31.10 },
-    '2026-08-30': { dot: 97.15, oot: 97.18, expedido: 48804,  delay: 1389,  abs: 28.73 },
-    '2026-08-31': { dot: 81.85, oot: 81.85, expedido: 110868, delay: 20119, abs: 27.10 },
-    '2026-09-01': { dot: 90.03, oot: 89.97, expedido: 94757,  delay: 9452,  abs: 25.44 },
-    '2026-09-02': { dot: 89.31, oot: 89.31, expedido: 128051, delay: 13692, abs: 22.00 },
-    '2026-09-03': { dot: 91.89, oot: 91.80, expedido: 136896, delay: 11100, abs: 21.81 },
-    '2026-09-04': { dot: 94.55, oot: 94.55, expedido: 121729, delay: 6631,  abs: 24.71 },
-    '2026-09-05': { dot: 95.57, oot: 95.57, expedido: 94908,  delay: 4205,  abs: 26.11 },
-    '2026-09-06': { dot: 98.62, oot: 98.62, expedido: 45601,  delay: 629,   abs: 27.74 },
-    '2026-09-07': { dot: 95.82, oot: 95.82, expedido: 94117,  delay: 3937,  abs: 21.74 },
-    '2026-09-08': { dot: 96.76, oot: 96.55, expedido: 82024,  delay: 2655,  abs: 21.36 },
-    '2026-09-09': { dot: 97.72, oot: 97.72, expedido: 92236,  delay: 2101,  abs: 17.76 },
-    '2026-09-10': { dot: 96.19, oot: 96.19, expedido: 133102, delay: 5067,  abs: 20.63 },
-    '2026-09-11': { dot: 94.98, oot: 94.97, expedido: 164358, delay: 8258,  abs: 19.08 },
-    '2026-09-12': { dot: 96.13, oot: 96.13, expedido: 149272, delay: 5780,  abs: 17.94 },
-    '2026-09-13': { dot: 96.66, oot: 96.66, expedido: 49493,  delay: 1654,  abs: 20.51 }
-  },
-  T1: {
-    '2026-08-15': { dot: 83.04, oot: 83.04, expedido: 12977, delay: 2201, abs: 21.26 },
-    '2026-08-16': { dot: 96.66, oot: 96.66, expedido: 16069, delay: 537,  abs: 27.05 },
-    '2026-08-17': { dot: 74.72, oot: 74.72, expedido: 906,   delay: 229,  abs: 23.44 },
-    '2026-08-18': { dot: 97.17, oot: 97.17, expedido: 20938, delay: 592,  abs: 22.38 },
-    '2026-08-19': { dot: 97.15, oot: 97.24, expedido: 13157, delay: 375,  abs: 17.91 },
-    '2026-08-20': { dot: 95.02, oot: 95.02, expedido: 19997, delay: 996,  abs: 20.98 },
-    '2026-08-21': { dot: 97.82, oot: 98.09, expedido: 16079, delay: 351,  abs: 24.38 },
-    '2026-08-22': { dot: 96.65, oot: 96.70, expedido: 10181, delay: 341,  abs: 24.51 },
-    '2026-08-23': { dot: 98.81, oot: 98.81, expedido: 15244, delay: 181,  abs: 25.50 },
-    '2026-08-24': { dot: 80.21, oot: 96.77, expedido: 682,   delay: 135,  abs: 21.35 },
-    '2026-08-25': { dot: 98.62, oot: 98.62, expedido: 20314, delay: 281,  abs: 23.40 },
-    '2026-08-26': { dot: 92.05, oot: 92.05, expedido: 15719, delay: 1250, abs: 21.81 },
-    '2026-08-27': { dot: 95.68, oot: 96.53, expedido: 21351, delay: 923,  abs: 27.59 },
-    '2026-08-28': { dot: 97.89, oot: 97.89, expedido: 18691, delay: 395,  abs: 22.95 },
-    '2026-08-29': { dot: 98.47, oot: 98.47, expedido: 13413, delay: 205,  abs: 27.68 },
-    '2026-08-30': { dot: 98.12, oot: 98.12, expedido: 16326, delay: 307,  abs: 27.81 },
-    '2026-08-31': { dot: 90.12, oot: 90.12, expedido: 607,   delay: 60,   abs: 21.69 },
-    '2026-09-01': { dot: 97.72, oot: 97.72, expedido: 25303, delay: 578,  abs: 23.89 },
-    '2026-09-02': { dot: 97.13, oot: 97.17, expedido: 18071, delay: 519,  abs: 18.63 },
-    '2026-09-03': { dot: 97.77, oot: 97.18, expedido: 22054, delay: 492, abs: 23.37 },
-    '2026-09-04': { dot: 98.81, oot: 98.81, expedido: 22617, delay: 270, abs: 23.46 },
-    '2026-09-05': { dot: 98.68, oot: 98.68, expedido: 11542, delay: 152, abs: 22.65 },
-    '2026-09-06': { dot: 99.45, oot: 99.45, expedido: 15879, delay: 87,  abs: 25.28 },
-    '2026-09-07': { dot: 79.93, oot: 79.93, expedido: 289,   delay: 58,  abs: 23.94 },
-    '2026-09-08': { dot: 97.42, oot: 96.76, expedido: 25828, delay: 666, abs: 21.24 },
-    '2026-09-09': { dot: 98.74, oot: 98.74, expedido: 14090, delay: 178, abs: 14.11 },
-    '2026-09-10': { dot: 99.03, oot: 99.03, expedido: 13743, delay: 133,  abs: 19.51 },
-    '2026-09-11': { dot: 98.74, oot: 98.74, expedido: 22935, delay: 290,  abs: 19.23 },
-    '2026-09-12': { dot: 97.06, oot: 97.06, expedido: 13151, delay: 386,  abs: 15.20 },
-    '2026-09-13': { dot: 90.87, oot: 90.87, expedido: 14758, delay: 1348, abs: 18.09 }
-  },
-  T2: {
-    '2026-08-15': { dot: 70.34, oot: 76.48, expedido: 28210,  delay: 8368,  abs: 21.83 },
-    '2026-08-16': { dot: 96.97, oot: 96.97, expedido: 28816,  delay: 872,   abs: 33.19 },
-    '2026-08-17': { dot: 94.03, oot: 94.07, expedido: 29715,  delay: 1773,  abs: 25.97 },
-    '2026-08-18': { dot: 85.32, oot: 86.06, expedido: 31011,  delay: 4551,  abs: 22.94 },
-    '2026-08-19': { dot: 88.47, oot: 88.47, expedido: 52303,  delay: 6033,  abs: 16.74 },
-    '2026-08-20': { dot: 92.62, oot: 92.62, expedido: 49459,  delay: 3652,  abs: 23.58 },
-    '2026-08-21': { dot: 75.22, oot: 75.22, expedido: 55676,  delay: 13799, abs: 21.36 },
-    '2026-08-22': { dot: 81.42, oot: 81.42, expedido: 67630,  delay: 12567, abs: 19.37 },
-    '2026-08-23': { dot: 98.69, oot: 98.69, expedido: 27252,  delay: 356,   abs: 22.94 },
-    '2026-08-24': { dot: 85.51, oot: 85.51, expedido: 84455,  delay: 12239, abs: 19.00 },
-    '2026-08-25': { dot: 87.40, oot: 87.40, expedido: 69896,  delay: 8805,  abs: 20.35 },
-    '2026-08-26': { dot: 85.18, oot: 85.18, expedido: 91479,  delay: 13554, abs: 16.14 },
-    '2026-08-27': { dot: 84.43, oot: 84.43, expedido: 111646, delay: 17379, abs: 19.09 },
-    '2026-08-28': { dot: 81.01, oot: 81.01, expedido: 117631, delay: 22336, abs: 27.31 },
-    '2026-08-29': { dot: 76.93, oot: 76.93, expedido: 99146,  delay: 22872, abs: 30.84 },
-    '2026-08-30': { dot: 99.37, oot: 99.37, expedido: 29647,  delay: 188,   abs: 24.31 },
-    '2026-08-31': { dot: 81.92, oot: 81.92, expedido: 108941, delay: 19698, abs: 22.83 },
-    '2026-09-01': { dot: 87.51, oot: 87.43, expedido: 68224,  delay: 8523,  abs: 18.27 },
-    '2026-09-02': { dot: 88.18, oot: 88.18, expedido: 108235, delay: 12797, abs: 22.12 },
-    '2026-09-03': { dot: 90.98, oot: 90.98, expedido: 113598, delay: 10248, abs: 17.57 },
-    '2026-09-04': { dot: 93.85, oot: 93.85, expedido: 97708,  delay: 6005,  abs: 19.23 },
-    '2026-09-05': { dot: 95.40, oot: 95.40, expedido: 81775,  delay: 3761,  abs: 26.37 },
-    '2026-09-06': { dot: 99.35, oot: 99.35, expedido: 28402,  delay: 185,   abs: 26.02 },
-    '2026-09-07': { dot: 96.06, oot: 96.06, expedido: 92901,  delay: 3664,  abs: 16.23 },
-    '2026-09-08': { dot: 96.59, oot: 96.59, expedido: 55528,  delay: 1891,  abs: 16.98 },
-    '2026-09-09': { dot: 97.60, oot: 97.60, expedido: 77807,  delay: 1869,  abs: 18.41 },
-    '2026-09-10': { dot: 95.90, oot: 95.90, expedido: 119021, delay: 4881, abs: 20.00 },
-    '2026-09-11': { dot: 94.37, oot: 94.37, expedido: 140641, delay: 7925, abs: 15.54 },
-    '2026-09-12': { dot: 96.06, oot: 96.06, expedido: 135319, delay: 5338, abs: 17.95 },
-    '2026-09-13': { dot: 99.31, oot: 99.31, expedido: 33843,  delay: 233,  abs: 23.32 }
-  },
-  T3: {
-    '2026-08-15': { dot: 89.64, oot: 89.64, expedido: 444,  delay: 46,  abs: 39.91 },
-    '2026-08-16': { dot: 93.00, oot: 93.00, expedido: 614,  delay: 43,  abs: 35.16 },
-    '2026-08-17': { dot: 89.24, oot: 89.24, expedido: 604,  delay: 65,  abs: 40.81 },
-    '2026-08-18': { dot: 91.90, oot: 91.90, expedido: 617,  delay: 50,  abs: 23.99 },
-    '2026-08-19': { dot: 88.89, oot: 88.89, expedido: 450,  delay: 50,  abs: 25.46 },
-    '2026-08-20': { dot: 75.20, oot: 75.20, expedido: 1008, delay: 250, abs: 31.40 },
-    '2026-08-21': { dot: 71.53, oot: 66.55, expedido: 1384, delay: 394, abs: 32.95 },
-    '2026-08-22': { dot: 72.69, oot: 78.06, expedido: 1135, delay: 310, abs: 31.66 },
-    '2026-08-23': { dot: 70.41, oot: 86.76, expedido: 1994, delay: 590, abs: 37.40 },
-    '2026-08-24': { dot: 91.50, oot: 91.50, expedido: 1282, delay: 109, abs: 34.22 },
-    '2026-08-25': { dot: 64.76, oot: 64.76, expedido: 1657, delay: 584, abs: 30.71 },
-    '2026-08-26': { dot: 92.36, oot: 92.36, expedido: 1557, delay: 119, abs: 29.96 },
-    '2026-08-27': { dot: 77.72, oot: 77.72, expedido: 2060, delay: 459, abs: 25.81 },
-    '2026-08-28': { dot: 81.32, oot: 81.32, expedido: 2993, delay: 559, abs: 30.12 },
-    '2026-08-29': { dot: 83.00, oot: 83.00, expedido: 2924, delay: 497, abs: 33.73 },
-    '2026-08-30': { dot: 68.42, oot: 68.84, expedido: 2831, delay: 894, abs: 33.47 },
-    '2026-08-31': { dot: 72.65, oot: 72.65, expedido: 1320, delay: 361, abs: 35.47 },
-    '2026-09-01': { dot: 71.46, oot: 71.46, expedido: 1230, delay: 351, abs: 32.78 },
-    '2026-09-02': { dot: 78.45, oot: 78.45, expedido: 1745, delay: 376, abs: 24.24 },
-    '2026-09-03': { dot: 71.06, oot: 71.06, expedido: 1244, delay: 360, abs: 24.02 },
-    '2026-09-04': { dot: 74.64, oot: 74.64, expedido: 1404, delay: 356, abs: 31.30 },
-    '2026-09-05': { dot: 81.65, oot: 81.65, expedido: 1591, delay: 292, abs: 28.44 },
-    '2026-09-06': { dot: 72.95, oot: 72.95, expedido: 1320, delay: 357, abs: 30.77 },
-    '2026-09-07': { dot: 76.81, oot: 76.81, expedido: 927,  delay: 215, abs: 25.79 },
-    '2026-09-08': { dot: 85.33, oot: 85.33, expedido: 668,  delay: 98,  abs: 25.45 },
-    '2026-09-09': { dot: 84.07, oot: 84.07, expedido: 339,  delay: 54,  abs: 19.91 },
-    '2026-09-10': { dot: 84.32, oot: 84.32, expedido: 338, delay: 53, abs: 22.17 },
-    '2026-09-11': { dot: 94.50, oot: 94.37, expedido: 782, delay: 43, abs: 22.51 },
-    '2026-09-12': { dot: 93.02, oot: 93.02, expedido: 802, delay: 56, abs: 20.89 },
-    '2026-09-13': { dot: 91.82, oot: 91.82, expedido: 892, delay: 73, abs: 20.00 }
-  }
-};
-
-// Pareto de Delay — coluna MOTIVO da query (razão específica do delay, não
-// o RESPONSAVEL/departamento), quebrado POR DIA e por turno (2026-08-15 a
-// 2026-09-09). Categorias fixas = os motivos que mais pesam no total do
-// período inteiro; o resto cai em "Outros". Isso permite somar exatamente
-// o intervalo de datas selecionado no filtro, em vez de mostrar sempre o
-// mesmo snapshot do último dia. "ALL" é derivado somando T1+T2+T3 na hora
-// (não precisa duplicar os dados).
-//
-// "Recusa de PA": categoria adicionada em 2026-09-11. Cruza os pacotes em
-// delay (ENTITY_ID) contra a planilha "Bipagem V3" (aba "Recusas", coluna
-// Codigo — bipagem manual do time de pacotes recusados por qualquer
-// motivo interno de carrier: Sem cobertura, Avaria, Embalagem inadequada
-// etc.). Quando o pacote aparece nessa planilha, o motivo da query vira
-// "Recusa de PA" independente do que a query original dizia (pedido
-// explícito do usuário) — já existia uma categoria separada "CC - Recusa
-// P.A" nativa da query, que continua existindo à parte pros casos que a
-// query já capturava sozinha e não estão na planilha de bipagem.
-const DELAY_OFFENDERS_DAILY = {
-  T1: {
-    '2026-08-15': {'Recusa de PA':1,'OPC - HU recebida em XSP24 e montada em XSP9':1,'CC - Pacote não localizado':4,'Outros':1017,'AIR - Pacote Não Localizado - Auto':275,'Pacotes recebido após CPT':900,'CC - Atraso no processamento - Auto':3},
-    '2026-08-16': {'Outros':161,'CC - Atraso no processamento - Auto':1,'Pacotes recebido após CPT':232,'AIR - Pacote Não Localizado - Auto':143},
-    '2026-08-17': {'CC - Morosidade no processo':84,'OPC - HU recebida em XSP24 e montada em XSP9':6,'CC - Pacote não localizado':35,'Outros':36,'Pacotes recebido após CPT':10,'CC - Atraso no processamento - Auto':56,'Pacotes recebido sem process time':2},
-    '2026-08-18': {'Outros':413,'OPC - HU recebida em XSP24 e montada em XSP9':1,'CC - Pacote não localizado':8,'Pacotes recebido após CPT':6,'AIR - Pacote Não Localizado - Auto':164},
-    '2026-08-19': {'Outros':71,'OPC - HU recebida em XSP24 e montada em XSP9':5,'CC - Pacote não localizado':25,'Pacotes recebido após CPT':116,'AIR - Pacote Não Localizado - Auto':158},
-    '2026-08-20': {'Outros':528,'Pacotes recebido sem process time':40,'Pacotes recebido após CPT':74,'AIR - Pacote Não Localizado - Auto':354},
-    '2026-08-21': {'OPC - HU recebida em XSP24 e montada em XSP9':1,'Outros':59,'CC - Pacote não localizado':3,'Pacotes recebido sem process time':10,'AIR - Pacote Não Localizado - Auto':271,'Pacotes recebido após CPT':7},
-    '2026-08-22': {'Outros':9,'OPC - HU recebida em XSP24 e montada em XSP9':1,'Pacotes recebido sem process time':6,'Pacotes recebido após CPT':17,'AIR - Pacote Não Localizado - Auto':308},
-    '2026-08-23': {'Outros':58,'CC - Pacote não localizado':79,'CC - Falta de capacidade operativa':1,'Pacotes recebido após CPT':35,'AIR - Pacote Não Localizado - Auto':8},
-    '2026-08-24': {'Outros':112,'CC - Morosidade no processo':1,'Pacotes recebido sem process time':5,'CC - Falta de capacidade operativa':16,'Pacotes recebido após CPT':1},
-    '2026-08-25': {'OPC - HU recebida em XSP24 e montada em XSP9':2,'CC - Pacote não localizado':85,'Outros':171,'AIR - Pacote Não Localizado - Auto':11,'Pacotes recebido após CPT':10,'CC - Atraso no processamento - Auto':1,'Pacotes recebido sem process time':1},
-    '2026-08-26': {'Outros':471,'Pacotes recebido após CPT':606,'CC - Pacote não localizado':93,'Pacotes recebido sem process time':28,'AIR - Pacote Não Localizado - Auto':5,'OPC - HU recebida em XSP24 e montada em XSP9':41,'CC - Atraso no processamento - Auto':6},
-    '2026-08-27': {'CC - Morosidade no processo':2,'OPC - HU recebida em XSP24 e montada em XSP9':9,'CC - Falta de capacidade operativa':6,'Outros':172,'CC - Pacote não localizado':15,'Pacotes recebido sem process time':31,'AIR - Pacote Não Localizado - Auto':294,'Pacotes recebido após CPT':388,'CC - Atraso no processamento - Auto':6},
-    '2026-08-28': {'Outros':288,'OPC - HU recebida em XSP24 e montada em XSP9':6,'CC - Pacote não localizado':3,'Pacotes recebido sem process time':11,'AIR - Pacote Não Localizado - Auto':63,'Pacotes recebido após CPT':19,'CC - Atraso no processamento - Auto':5},
-    '2026-08-29': {'AIR - Pacote Não Localizado - Auto':1,'CC - Pacote não localizado':15,'Outros':172,'CC - Falta de capacidade operativa':1,'Pacotes recebido após CPT':2,'SI - Não conformidade - Auto':5,'CC - Atraso no processamento - Auto':7,'Pacotes recebido sem process time':2},
-    '2026-08-30': {'Outros':132,'CC - Pacote não localizado':4,'Pacotes recebido sem process time':4,'AIR - Pacote Não Localizado - Auto':114,'Pacotes recebido após CPT':3,'SI - Não conformidade - Auto':25,'CC - Atraso no processamento - Auto':25},
-    '2026-08-31': {'Outros':54,'SI - Não conformidade - Auto':1,'CC - Pacote não localizado':3,'Pacotes recebido após CPT':2},
-    '2026-09-01': {'OPC - HU recebida em XSP24 e montada em XSP9':1,'CC - Pacote não localizado':6,'Outros':373,'AIR - Pacote Não Localizado - Auto':98,'Pacotes recebido após CPT':6,'SI - Não conformidade - Auto':6,'CC - Atraso no processamento - Auto':86,'Pacotes recebido sem process time':2},
-    '2026-09-02': {'Recusa de PA':1,'OPC - HU recebida em XSP24 e montada em XSP9':6,'Outros':200,'AIR - Pacote Não Localizado - Auto':197,'Pacotes recebido após CPT':7,'SI - Não conformidade - Auto':95,'CC - Atraso no processamento - Auto':13},
-    '2026-09-03': {'Recusa de PA':4,'Outros':268,'CC - Pacote não localizado':3,'Pacotes recebido sem process time':22,'AIR - Pacote Não Localizado - Auto':130,'Pacotes recebido após CPT':7,'CC - Atraso no processamento - Auto':58},
-    '2026-09-04': {'Recusa de PA':19,'Outros':49,'CC - Pacote não localizado':5,'Pacotes recebido sem process time':10,'AIR - Pacote Não Localizado - Auto':172,'Pacotes recebido após CPT':8,'SI - Não conformidade - Auto':2,'CC - Atraso no processamento - Auto':5},
-    '2026-09-05': {'Recusa de PA':6,'OPC - HU recebida em XSP24 e montada em XSP9':1,'CC - Pacote não localizado':2,'Outros':115,'Pacotes recebido após CPT':22,'CC - Atraso no processamento - Auto':6},
-    '2026-09-06': {'Recusa de PA':1,'Outros':71,'CC - Pacote não localizado':5,'Pacotes recebido sem process time':1,'AIR - Pacote Não Localizado - Auto':4,'Pacotes recebido após CPT':4,'SI - Não conformidade - Auto':1},
-    '2026-09-07': {'Recusa de PA':2,'OPC - HU recebida em XSP24 e montada em XSP9':1,'CC - Pacote não localizado':19,'Outros':27,'AIR - Pacote Não Localizado - Auto':5,'Pacotes recebido após CPT':2,'SI - Não conformidade - Auto':2},
-    '2026-09-08': {'CC - Pacote não localizado':1,'Outros':526,'AIR - Pacote Não Localizado - Auto':81,'Pacotes recebido após CPT':23,'SI - Não conformidade - Auto':32,'CC - Atraso no processamento - Auto':3},
-    '2026-09-09': {'Recusa de PA':3,'CC - Pacote não localizado':3,'Outros':23,'AIR - Pacote Não Localizado - Auto':146,'Pacotes recebido após CPT':2,'CC - Atraso no processamento - Auto':1},
-    '2026-09-10': {'Outros':122,'Pacotes recebido sem process time':6,'Pacotes recebido após CPT':3,'CC - Pacote não localizado':2},
-    '2026-09-11': {'AIR - Pacote Não Localizado - Auto':177,'Pacotes recebido após CPT':84,'Outros':23,'Pacotes recebido sem process time':4,'CC - Pacote não localizado':2},
-    '2026-09-12': {'Pacotes recebido após CPT':303,'Outros':69,'Pacotes recebido sem process time':14},
-    '2026-09-13': {'Pacotes recebido após CPT':1249,'AIR - Pacote Não Localizado - Auto':62,'Outros':37},
-  },
-  T2: {
-    '2026-08-15': {'Outros':2444,'CC - Pacote não localizado':923,'Pacotes recebido sem process time':780,'AIR - Pacote Não Localizado - Auto':196,'Pacotes recebido após CPT':3881,'CC - Atraso no processamento - Auto':144},
-    '2026-08-16': {'Outros':491,'CC - Pacote não localizado':21,'Pacotes recebido após CPT':358,'Pacotes recebido sem process time':2},
-    '2026-08-17': {'Recusa de PA':1,'Outros':1,'OPC - HU recebida em XSP24 e montada em XSP9':31,'CC - Pacote não localizado':1013,'Pacotes recebido sem process time':65,'AIR - Pacote Não Localizado - Auto':248,'Pacotes recebido após CPT':414},
-    '2026-08-18': {'Recusa de PA':1,'OPC - HU recebida em XSP24 e montada em XSP9':29,'Outros':1734,'CC - Pacote não localizado':587,'Pacotes recebido sem process time':376,'AIR - Pacote Não Localizado - Auto':211,'Pacotes recebido após CPT':1523,'CC - Atraso no processamento - Auto':90},
-    '2026-08-19': {'OPC - HU recebida em XSP24 e montada em XSP9':6,'Outros':617,'CC - Pacote não localizado':729,'Pacotes recebido sem process time':2336,'AIR - Pacote Não Localizado - Auto':402,'Pacotes recebido após CPT':1943},
-    '2026-08-20': {'Recusa de PA':5,'OPC - HU recebida em XSP24 e montada em XSP9':2,'Outros':2,'CC - Falta de capacidade operativa':1415,'CC - Pacote não localizado':354,'Pacotes recebido sem process time':436,'AIR - Pacote Não Localizado - Auto':288,'Pacotes recebido após CPT':1147,'SI - Não conformidade - Auto':1,'CC - Atraso no processamento - Auto':2},
-    '2026-08-21': {'Recusa de PA':15,'CC - Morosidade no processo':124,'Outros':73,'CC - Falta de capacidade operativa':714,'CC - Pacote não localizado':10522,'Pacotes recebido sem process time':579,'AIR - Pacote Não Localizado - Auto':209,'Pacotes recebido após CPT':1541,'CC - Atraso no processamento - Auto':22},
-    '2026-08-22': {'Recusa de PA':9,'CC - Morosidade no processo':5,'OPC - HU recebida em XSP24 e montada em XSP9':91,'Outros':34,'CC - Falta de capacidade operativa':6467,'CC - Pacote não localizado':1088,'Pacotes recebido sem process time':2043,'AIR - Pacote Não Localizado - Auto':162,'Pacotes recebido após CPT':2666,'CC - Atraso no processamento - Auto':2},
-    '2026-08-23': {'CC - Falta de capacidade operativa':1,'CC - Pacote não localizado':266,'Outros':14,'AIR - Pacote Não Localizado - Auto':23,'Pacotes recebido após CPT':50,'CC - Atraso no processamento - Auto':2},
-    '2026-08-24': {'Recusa de PA':14,'CC - Morosidade no processo':1632,'CC - Falta de capacidade operativa':10,'OPC - HU recebida em XSP24 e montada em XSP9':545,'CC - Pacote não localizado':2765,'Outros':3608,'AIR - Pacote Não Localizado - Auto':423,'Pacotes recebido após CPT':656,'SI - Não conformidade - Auto':10,'CC - Atraso no processamento - Auto':2129,'Pacotes recebido sem process time':447},
-    '2026-08-25': {'Recusa de PA':8,'CC - Morosidade no processo':1,'OPC - HU recebida em XSP24 e montada em XSP9':47,'CC - Falta de capacidade operativa':1,'Outros':473,'CC - Pacote não localizado':882,'Pacotes recebido sem process time':2663,'AIR - Pacote Não Localizado - Auto':160,'Pacotes recebido após CPT':2765,'SI - Não conformidade - Auto':13,'CC - Atraso no processamento - Auto':1792},
-    '2026-08-26': {'Recusa de PA':8,'CC - Morosidade no processo':1115,'OPC - HU recebida em XSP24 e montada em XSP9':6,'CC - Falta de capacidade operativa':1,'Outros':2590,'CC - Pacote não localizado':2805,'Pacotes recebido sem process time':1412,'AIR - Pacote Não Localizado - Auto':434,'Pacotes recebido após CPT':4943,'SI - Não conformidade - Auto':207,'CC - Atraso no processamento - Auto':33},
-    '2026-08-27': {'Recusa de PA':25,'CC - Morosidade no processo':3658,'OPC - HU recebida em XSP24 e montada em XSP9':1223,'CC - Pacote não localizado':2984,'Outros':3136,'AIR - Pacote Não Localizado - Auto':152,'Pacotes recebido após CPT':2816,'SI - Não conformidade - Auto':48,'CC - Atraso no processamento - Auto':3262,'Pacotes recebido sem process time':75},
-    '2026-08-28': {'Recusa de PA':19,'Outros':145,'Pacotes recebido após CPT':228,'CC - Pacote não localizado':19340,'Pacotes recebido sem process time':1219,'AIR - Pacote Não Localizado - Auto':623,'OPC - HU recebida em XSP24 e montada em XSP9':531,'SI - Não conformidade - Auto':32,'CC - Atraso no processamento - Auto':199},
-    '2026-08-29': {'Recusa de PA':22,'Outros':214,'CC - Pacote não localizado':9197,'Pacotes recebido sem process time':1493,'AIR - Pacote Não Localizado - Auto':488,'Pacotes recebido após CPT':528,'SI - Não conformidade - Auto':33,'CC - Atraso no processamento - Auto':10896},
-    '2026-08-30': {'SI - Não conformidade - Auto':2,'Pacotes recebido após CPT':12,'AIR - Pacote Não Localizado - Auto':174},
-    '2026-08-31': {'Recusa de PA':72,'OPC - HU recebida em XSP24 e montada em XSP9':82,'CC - Pacote não localizado':4815,'Outros':2302,'AIR - Pacote Não Localizado - Auto':110,'Pacotes recebido após CPT':709,'SI - Não conformidade - Auto':372,'CC - Atraso no processamento - Auto':11225,'Pacotes recebido sem process time':10},
-    '2026-09-01': {'Recusa de PA':43,'OPC - HU recebida em XSP24 e montada em XSP9':31,'CC - Falta de capacidade operativa':1,'Outros':408,'CC - Pacote não localizado':706,'Pacotes recebido sem process time':4921,'AIR - Pacote Não Localizado - Auto':171,'Pacotes recebido após CPT':423,'SI - Não conformidade - Auto':1051,'CC - Atraso no processamento - Auto':768},
-    '2026-09-02': {'Recusa de PA':80,'Outros':12,'OPC - HU recebida em XSP24 e montada em XSP9':122,'CC - Pacote não localizado':1491,'Pacotes recebido sem process time':6628,'AIR - Pacote Não Localizado - Auto':663,'Pacotes recebido após CPT':144,'SI - Não conformidade - Auto':1464,'CC - Atraso no processamento - Auto':2193},
-    '2026-09-03': {'Recusa de PA':132,'OPC - HU recebida em XSP24 e montada em XSP9':2,'Outros':2914,'CC - Pacote não localizado':708,'Pacotes recebido sem process time':1082,'AIR - Pacote Não Localizado - Auto':135,'Pacotes recebido após CPT':579,'SI - Não conformidade - Auto':955,'CC - Atraso no processamento - Auto':3741},
-    '2026-09-04': {'Recusa de PA':174,'CC - Morosidade no processo':2,'OPC - HU recebida em XSP24 e montada em XSP9':1,'Outros':561,'CC - Pacote não localizado':2538,'Pacotes recebido sem process time':1307,'AIR - Pacote Não Localizado - Auto':122,'Pacotes recebido após CPT':235,'SI - Não conformidade - Auto':36,'CC - Atraso no processamento - Auto':1028},
-    '2026-09-05': {'Recusa de PA':66,'OPC - HU recebida em XSP24 e montada em XSP9':3,'Outros':438,'CC - Pacote não localizado':1786,'Pacotes recebido sem process time':543,'AIR - Pacote Não Localizado - Auto':106,'Pacotes recebido após CPT':367,'SI - Não conformidade - Auto':3,'CC - Atraso no processamento - Auto':448},
-    '2026-09-06': {'Recusa de PA':1,'OPC - HU recebida em XSP24 e montada em XSP9':1,'CC - Pacote não localizado':3,'Outros':2,'AIR - Pacote Não Localizado - Auto':171,'Pacotes recebido após CPT':7},
-    '2026-09-07': {'Recusa de PA':85,'OPC - HU recebida em XSP24 e montada em XSP9':691,'CC - Pacote não localizado':2419,'Outros':61,'AIR - Pacote Não Localizado - Auto':134,'Pacotes recebido após CPT':136,'SI - Não conformidade - Auto':3,'CC - Atraso no processamento - Auto':91,'Pacotes recebido sem process time':43},
-    '2026-09-08': {'Recusa de PA':107,'Pacotes recebido após CPT':18,'CC - Pacote não localizado':964,'Outros':96,'AIR - Pacote Não Localizado - Auto':71,'OPC - HU recebida em XSP24 e montada em XSP9':604,'CC - Atraso no processamento - Auto':3,'Pacotes recebido sem process time':28},
-    '2026-09-09': {'Recusa de PA':199,'CC - Morosidade no processo':1,'CC - Falta de capacidade operativa':1,'Outros':266,'CC - Pacote não localizado':1117,'Pacotes recebido sem process time':134,'AIR - Pacote Não Localizado - Auto':118,'Pacotes recebido após CPT':27,'SI - Não conformidade - Auto':1,'CC - Atraso no processamento - Auto':9},
-    '2026-09-10': {'CC - Pacote não localizado':2324,'Pacotes recebido sem process time':1695,'Pacotes recebido após CPT':342,'AIR - Pacote Não Localizado - Auto':317,'Outros':195,'CC - Atraso no processamento - Auto':4,'OPC - HU recebida em XSP24 e montada em XSP9':4},
-    '2026-09-11': {'CC - Pacote não localizado':4248,'Pacotes recebido sem process time':2149,'Pacotes recebido após CPT':1154,'AIR - Pacote Não Localizado - Auto':152,'Outros':148,'CC - Atraso no processamento - Auto':72,'OPC - HU recebida em XSP24 e montada em XSP9':2},
-    '2026-09-12': {'CC - Pacote não localizado':3053,'Pacotes recebido após CPT':1459,'Pacotes recebido sem process time':454,'Outros':204,'AIR - Pacote Não Localizado - Auto':103,'CC - Atraso no processamento - Auto':65},
-    '2026-09-13': {'AIR - Pacote Não Localizado - Auto':214,'Pacotes recebido sem process time':15,'CC - Pacote não localizado':2,'Pacotes recebido após CPT':1,'Outros':1},
-  },
-  T3: {
-    '2026-08-15': {'Outros':27,'AIR - Pacote Não Localizado - Auto':1,'Pacotes recebido sem process time':1,'CC - Atraso no processamento - Auto':10,'Pacotes recebido após CPT':7},
-    '2026-08-16': {'Pacotes recebido após CPT':12,'Outros':31},
-    '2026-08-17': {'Outros':42,'Pacotes recebido sem process time':3,'Pacotes recebido após CPT':20},
-    '2026-08-18': {'Outros':27,'Pacotes recebido sem process time':1,'Pacotes recebido após CPT':21,'AIR - Pacote Não Localizado - Auto':1},
-    '2026-08-19': {'Outros':27,'CC - Pacote não localizado':13,'Pacotes recebido após CPT':7,'OPC - HU recebida em XSP24 e montada em XSP9':3},
-    '2026-08-20': {'Outros':211,'CC - Pacote não localizado':30,'Pacotes recebido após CPT':8,'OPC - HU recebida em XSP24 e montada em XSP9':1},
-    '2026-08-21': {'CC - Morosidade no processo':53,'Outros':234,'CC - Pacote não localizado':74,'Pacotes recebido sem process time':11,'AIR - Pacote Não Localizado - Auto':2,'Pacotes recebido após CPT':20},
-    '2026-08-22': {'CC - Falta de capacidade operativa':2,'OPC - HU recebida em XSP24 e montada em XSP9':20,'CC - Pacote não localizado':97,'Outros':164,'AIR - Pacote Não Localizado - Auto':9,'Pacotes recebido após CPT':14,'Pacotes recebido sem process time':4},
-    '2026-08-23': {'Outros':438,'Pacotes recebido após CPT':57,'CC - Pacote não localizado':2,'Pacotes recebido sem process time':35,'CC - Falta de capacidade operativa':4,'OPC - HU recebida em XSP24 e montada em XSP9':48,'CC - Atraso no processamento - Auto':6},
-    '2026-08-24': {'Outros':77,'Pacotes recebido após CPT':7,'CC - Pacote não localizado':3,'Pacotes recebido sem process time':7,'CC - Falta de capacidade operativa':7,'OPC - HU recebida em XSP24 e montada em XSP9':6,'CC - Atraso no processamento - Auto':2},
-    '2026-08-25': {'CC - Morosidade no processo':19,'Pacotes recebido após CPT':34,'Outros':484,'CC - Falta de capacidade operativa':21,'OPC - HU recebida em XSP24 e montada em XSP9':11,'CC - Atraso no processamento - Auto':10,'Pacotes recebido sem process time':5},
-    '2026-08-26': {'Recusa de PA':1,'Pacotes recebido após CPT':15,'CC - Pacote não localizado':1,'Outros':9,'CC - Falta de capacidade operativa':1,'OPC - HU recebida em XSP24 e montada em XSP9':91,'CC - Atraso no processamento - Auto':1},
-    '2026-08-27': {'CC - Falta de capacidade operativa':1,'Pacotes recebido após CPT':14,'CC - Pacote não localizado':2,'Outros':306,'AIR - Pacote Não Localizado - Auto':10,'OPC - HU recebida em XSP24 e montada em XSP9':33,'SI - Não conformidade - Auto':2,'CC - Atraso no processamento - Auto':89,'Pacotes recebido sem process time':2},
-    '2026-08-28': {'Recusa de PA':1,'OPC - HU recebida em XSP24 e montada em XSP9':24,'Outros':108,'CC - Pacote não localizado':22,'Pacotes recebido sem process time':33,'AIR - Pacote Não Localizado - Auto':115,'Pacotes recebido após CPT':129,'SI - Não conformidade - Auto':15,'CC - Atraso no processamento - Auto':112},
-    '2026-08-29': {'Recusa de PA':2,'CC - Morosidade no processo':52,'CC - Falta de capacidade operativa':1,'CC - Pacote não localizado':105,'Outros':229,'AIR - Pacote Não Localizado - Auto':24,'Pacotes recebido após CPT':27,'SI - Não conformidade - Auto':17,'CC - Atraso no processamento - Auto':38,'Pacotes recebido sem process time':2},
-    '2026-08-30': {'Recusa de PA':9,'Pacotes recebido após CPT':10,'CC - Pacote não localizado':39,'Outros':511,'OPC - HU recebida em XSP24 e montada em XSP9':131,'SI - Não conformidade - Auto':110,'CC - Atraso no processamento - Auto':75,'Pacotes recebido sem process time':9},
-    '2026-08-31': {'Recusa de PA':4,'Pacotes recebido após CPT':7,'CC - Pacote não localizado':11,'Outros':156,'AIR - Pacote Não Localizado - Auto':2,'OPC - HU recebida em XSP24 e montada em XSP9':90,'SI - Não conformidade - Auto':62,'CC - Atraso no processamento - Auto':20,'Pacotes recebido sem process time':9},
-    '2026-09-01': {'Recusa de PA':8,'Pacotes recebido após CPT':107,'CC - Pacote não localizado':16,'Outros':75,'AIR - Pacote Não Localizado - Auto':2,'OPC - HU recebida em XSP24 e montada em XSP9':23,'SI - Não conformidade - Auto':21,'CC - Atraso no processamento - Auto':90,'Pacotes recebido sem process time':9},
-    '2026-09-02': {'Recusa de PA':18,'OPC - HU recebida em XSP24 e montada em XSP9':11,'CC - Pacote não localizado':43,'Outros':74,'Pacotes recebido após CPT':22,'SI - Não conformidade - Auto':12,'CC - Atraso no processamento - Auto':190,'Pacotes recebido sem process time':6},
-    '2026-09-03': {'Recusa de PA':12,'Pacotes recebido após CPT':5,'CC - Pacote não localizado':3,'Outros':163,'AIR - Pacote Não Localizado - Auto':5,'OPC - HU recebida em XSP24 e montada em XSP9':49,'SI - Não conformidade - Auto':27,'CC - Atraso no processamento - Auto':91,'Pacotes recebido sem process time':5},
-    '2026-09-04': {'Recusa de PA':42,'OPC - HU recebida em XSP24 e montada em XSP9':9,'CC - Pacote não localizado':13,'Outros':33,'AIR - Pacote Não Localizado - Auto':4,'Pacotes recebido após CPT':196,'SI - Não conformidade - Auto':31,'CC - Atraso no processamento - Auto':20,'Pacotes recebido sem process time':8},
-    '2026-09-05': {'Recusa de PA':56,'OPC - HU recebida em XSP24 e montada em XSP9':1,'CC - Falta de capacidade operativa':1,'CC - Pacote não localizado':89,'Outros':43,'AIR - Pacote Não Localizado - Auto':2,'Pacotes recebido após CPT':39,'CC - Atraso no processamento - Auto':54,'Pacotes recebido sem process time':7},
-    '2026-09-06': {'Recusa de PA':24,'OPC - HU recebida em XSP24 e montada em XSP9':1,'Outros':177,'CC - Pacote não localizado':118,'Pacotes recebido sem process time':27,'AIR - Pacote Não Localizado - Auto':3,'Pacotes recebido após CPT':3,'SI - Não conformidade - Auto':1,'CC - Atraso no processamento - Auto':3},
-    '2026-09-07': {'Recusa de PA':4,'Pacotes recebido após CPT':21,'CC - Pacote não localizado':71,'Outros':79,'AIR - Pacote Não Localizado - Auto':1,'OPC - HU recebida em XSP24 e montada em XSP9':16,'CC - Atraso no processamento - Auto':12,'Pacotes recebido sem process time':10},
-    '2026-09-08': {'Recusa de PA':5,'Outros':50,'CC - Pacote não localizado':17,'Pacotes recebido sem process time':22,'Pacotes recebido após CPT':3,'CC - Atraso no processamento - Auto':1},
-    '2026-09-09': {'Recusa de PA':8,'Outros':26,'CC - Pacote não localizado':1,'Pacotes recebido sem process time':16,'AIR - Pacote Não Localizado - Auto':2,'CC - Atraso no processamento - Auto':1},
-    '2026-09-10': {'Outros':29,'CC - Pacote não localizado':19,'Pacotes recebido após CPT':3,'OPC - HU recebida em XSP24 e montada em XSP9':1,'Pacotes recebido sem process time':1},
-    '2026-09-11': {'CC - Pacote não localizado':21,'Outros':14,'AIR - Pacote Não Localizado - Auto':6,'Pacotes recebido após CPT':1,'OPC - HU recebida em XSP24 e montada em XSP9':1},
-    '2026-09-12': {'CC - Pacote não localizado':34,'CC - Atraso no processamento - Auto':7,'Pacotes recebido sem process time':6,'Outros':4,'AIR - Pacote Não Localizado - Auto':3,'Pacotes recebido após CPT':2},
-    '2026-09-13': {'CC - Pacote não localizado':43,'Outros':24,'Pacotes recebido sem process time':2,'Pacotes recebido após CPT':1,'AIR - Pacote Não Localizado - Auto':1,'OPC - HU recebida em XSP24 e montada em XSP9':1,'CC - Atraso no processamento - Auto':1},
-  },
-};
-// Pareto de ABS por motivo (categorias ABS_KEYS_ já usadas no painel de
-// Presença Digital), quebrado POR DIA e por turno (2026-08-15 a 2026-09-09)
-// — mesma lógica de agregação por intervalo do DELAY_OFFENDERS_DAILY acima.
-const ABS_OFFENDERS_DAILY = {
-  T1: {
-    '2026-08-15': {'Sem Resposta':1,'Falta Injustificada':26,'Banco de Horas ABS':3,'Proc. Desl.':10,'Atestado ABS':4},
-    '2026-08-16': {'Falta Injustificada':35,'Banco de Horas ABS':3,'Proc. Desl.':11,'Atestado ABS':7},
-    '2026-08-17': {'Falta Injustificada':28,'Banco de Horas ABS':3,'Proc. Desl.':10,'Atestado ABS':4},
-    '2026-08-18': {'Sem Resposta':1,'Falta Injustificada':28,'Proc. Desl.':11,'Banco de Horas ABS':2,'Atestado ABS':5},
-    '2026-08-19': {'Sem Resposta':1,'Falta Injustificada':22,'Proc. Desl.':8,'Atestado ABS':5},
-    '2026-08-20': {'Sem Resposta':3,'Falta Injustificada':21,'Banco de Horas ABS':1,'Proc. Desl.':11,'Atestado ABS':7},
-    '2026-08-21': {'Sem Resposta':2,'Falta Injustificada':27,'Proc. Desl.':14,'Atestado ABS':6},
-    '2026-08-22': {'Sem Resposta':4,'Falta Injustificada':28,'Banco de Horas ABS':1,'Proc. Desl.':10,'Atestado ABS':7},
-    '2026-08-23': {'Sem Resposta':1,'Falta Injustificada':27,'Banco de Horas ABS':2,'Proc. Desl.':12,'Atestado ABS':9},
-    '2026-08-24': {'Falta Injustificada':25,'Proc. Desl.':6,'Banco de Horas ABS':5,'Atestado ABS':5},
-    '2026-08-25': {'Falta Injustificada':26,'Banco de Horas ABS':1,'Proc. Desl.':7,'Atestado ABS':10},
-    '2026-08-26': {'Sem Resposta':1,'Falta Injustificada':35,'Proc. Desl.':10,'Atestado ABS':7},
-    '2026-08-27': {'Sem Resposta':2,'Falta Injustificada':29,'Banco de Horas ABS':6,'Proc. Desl.':7,'Atestado ABS':12},
-    '2026-08-28': {'Sem Resposta':1,'Falta Injustificada':27,'Banco de Horas ABS':1,'Proc. Desl.':9,'Atestado ABS':4},
-    '2026-08-29': {'Sem Resposta':1,'Falta Injustificada':31,'Banco de Horas ABS':1,'Proc. Desl.':8,'Atestado ABS':8},
-    '2026-08-30': {'Sem Resposta':1,'Falta Injustificada':39,'Banco de Horas ABS':2,'Proc. Desl.':4,'Atestado ABS':6},
-    '2026-08-31': {'Sem Resposta':1,'Falta Injustificada':33,'Proc. Desl.':4,'Banco de Horas ABS':2,'Atestado ABS':1},
-    '2026-09-01': {'Falta Injustificada':33,'Proc. Desl.':2,'Banco de Horas ABS':3,'Atestado ABS':5},
-    '2026-09-02': {'Falta Injustificada':19,'Proc. Desl.':3,'Atestado ABS':8},
-    '2026-09-03': {'Sem Resposta':2,'Falta Injustificada':24,'Banco de Horas ABS':2,'Proc. Desl.':8,'Atestado ABS':7},
-    '2026-09-04': {'Sem Resposta':1,'Falta Injustificada':24,'Proc. Desl.':8,'Banco de Horas ABS':4,'Atestado ABS':5},
-    '2026-09-05': {'Sem Resposta':1,'Falta Injustificada':17,'Banco de Horas ABS':1,'Proc. Desl.':16,'Atestado ABS':6},
-    '2026-09-06': {'Sem Resposta':1,'Falta Injustificada':23,'Banco de Horas ABS':1,'Proc. Desl.':15,'Atestado ABS':5},
-    '2026-09-07': {'Sem Resposta':1,'Falta Injustificada':22,'Proc. Desl.':14,'Banco de Horas ABS':3,'Atestado ABS':5},
-    '2026-09-08': {'Sem Resposta':1,'Falta Injustificada':17,'Proc. Desl.':11,'Banco de Horas ABS':3,'Atestado ABS':9},
-    '2026-09-09': {'Falta Injustificada':12,'Banco de Horas ABS':2,'Proc. Desl.':2,'Atestado ABS':7},
-    '2026-09-10': {'Falta Injustificada':19,'Atestado ABS':5,'Proc. Desl.':5,'Banco de Horas ABS':2,'Sem Resposta':1},
-    '2026-09-11': {'Proc. Desl.':6,'Banco de Horas ABS':3,'Falta Injustificada':21,'Atestado ABS':5},
-    '2026-09-12': {'Falta Injustificada':15,'Proc. Desl.':6,'Atestado ABS':5},
-    '2026-09-13': {'Falta Injustificada':16,'Proc. Desl.':8,'Banco de Horas ABS':4,'Atestado ABS':5,'Sem Resposta':1}
-  },
-  T2: {
-    '2026-08-15': {'Falta Injustificada':48,'Banco de Horas ABS':1,'Atestado ABS':1},
-    '2026-08-16': {'Falta Injustificada':70,'Proc. Desl.':1,'Banco de Horas ABS':3,'Atestado ABS':2},
-    '2026-08-17': {'Falta Injustificada':42,'Proc. Desl.':3,'Banco de Horas ABS':13,'Atestado ABS':2},
-    '2026-08-18': {'Falta Injustificada':34,'Proc. Desl.':6,'Banco de Horas ABS':9,'Atestado ABS':4},
-    '2026-08-19': {'Falta Injustificada':25,'Proc. Desl.':6,'Banco de Horas ABS':3,'Atestado ABS':5},
-    '2026-08-20': {'Falta Injustificada':36,'Banco de Horas ABS':8,'Atestado ABS':10},
-    '2026-08-21': {'Falta Injustificada':30,'Banco de Horas ABS':6,'Proc. Desl.':2,'Atestado ABS':9},
-    '2026-08-22': {'Falta Injustificada':32,'Banco de Horas ABS':4,'Proc. Desl.':5,'Atestado ABS':2},
-    '2026-08-23': {'Falta Injustificada':35,'Banco de Horas ABS':6,'Proc. Desl.':7,'Atestado ABS':2},
-    '2026-08-24': {'Falta Injustificada':25,'Proc. Desl.':11,'Atestado ABS':6},
-    '2026-08-25': {'Falta Injustificada':32,'Proc. Desl.':9,'Banco de Horas ABS':2,'Atestado ABS':3},
-    '2026-08-26': {'Falta Injustificada':20,'Proc. Desl.':10,'Banco de Horas ABS':3,'Atestado ABS':3},
-    '2026-08-27': {'Falta Injustificada':28,'Proc. Desl.':8,'Atestado ABS':6},
-    '2026-08-28': {'Falta Injustificada':37,'Proc. Desl.':11,'Banco de Horas ABS':5,'Atestado ABS':6},
-    '2026-08-29': {'Falta Injustificada':38,'Proc. Desl.':11,'Banco de Horas ABS':11,'Atestado ABS':6},
-    '2026-08-30': {'Falta Injustificada':38,'Proc. Desl.':4,'Banco de Horas ABS':7,'Atestado ABS':4},
-    '2026-08-31': {'Falta Injustificada':31,'Proc. Desl.':6,'Banco de Horas ABS':9,'Atestado ABS':4},
-    '2026-09-01': {'Falta Injustificada':21,'Banco de Horas ABS':1,'Proc. Desl.':13,'Atestado ABS':3},
-    '2026-09-02': {'Sem Resposta':1,'Falta Injustificada':27,'Proc. Desl.':14,'Banco de Horas ABS':1,'Atestado ABS':3},
-    '2026-09-03': {'Sem Resposta':1,'Falta Injustificada':14,'Proc. Desl.':18,'Banco de Horas ABS':2,'Atestado ABS':4},
-    '2026-09-04': {'Sem Resposta':2,'Falta Injustificada':9,'Banco de Horas ABS':8,'Proc. Desl.':15,'Atestado ABS':6},
-    '2026-09-05': {'Sem Resposta':2,'Falta Injustificada':22,'Proc. Desl.':14,'Banco de Horas ABS':10,'Atestado ABS':5},
-    '2026-09-06': {'Sem Resposta':2,'Falta Injustificada':28,'Banco de Horas ABS':5,'Proc. Desl.':12,'Atestado ABS':4},
-    '2026-09-07': {'Sem Resposta':2,'Falta Injustificada':15,'Proc. Desl.':7,'Banco de Horas ABS':4,'Atestado ABS':4},
-    '2026-09-08': {'Sem Resposta':3,'Falta Injustificada':20,'Banco de Horas ABS':4,'Proc. Desl.':6,'Atestado ABS':3},
-    '2026-09-09': {'Sem Resposta':2,'Falta Injustificada':18,'Banco de Horas ABS':2,'Proc. Desl.':11,'Atestado ABS':4},
-    '2026-09-10': {'Proc. Desl.':15,'Atestado ABS':8,'Falta Injustificada':12,'Sem Resposta':4,'Banco de Horas ABS':2},
-    '2026-09-11': {'Falta Injustificada':14,'Proc. Desl.':7,'Banco de Horas ABS':3,'Atestado ABS':6},
-    '2026-09-12': {'Banco de Horas ABS':6,'Proc. Desl.':13,'Falta Injustificada':11,'Atestado ABS':4,'Sem Resposta':1},
-    '2026-09-13': {'Proc. Desl.':12,'Banco de Horas ABS':7,'Falta Injustificada':19,'Atestado ABS':4,'Sem Resposta':3}
-  },
-  T3: {
-    '2026-08-15': {'Sem Resposta':31,'Falta Injustificada':50,'Proc. Desl.':6,'Banco de Horas ABS':1,'Atestado ABS':3},
-    '2026-08-16': {'Falta Injustificada':81,'Banco de Horas ABS':1,'Proc. Desl.':5,'Atestado ABS':3},
-    '2026-08-17': {'Sem Resposta':34,'Falta Injustificada':68,'Proc. Desl.':5,'Banco de Horas ABS':2,'Atestado ABS':2},
-    '2026-08-18': {'Falta Injustificada':50,'Proc. Desl.':8,'Banco de Horas ABS':4,'Atestado ABS':3},
-    '2026-08-19': {'Falta Injustificada':47,'Banco de Horas ABS':1,'Proc. Desl.':15,'Atestado ABS':6},
-    '2026-08-20': {'Falta Injustificada':60,'Banco de Horas ABS':1,'Proc. Desl.':12,'Atestado ABS':8},
-    '2026-08-21': {'Falta Injustificada':58,'Banco de Horas ABS':6,'Proc. Desl.':13,'Atestado ABS':10},
-    '2026-08-22': {'Sem Resposta':4,'Falta Injustificada':59,'Banco de Horas ABS':1,'Proc. Desl.':10,'Atestado ABS':8},
-    '2026-08-23': {'Sem Resposta':11,'Falta Injustificada':66,'Proc. Desl.':8,'Banco de Horas ABS':3,'Atestado ABS':7},
-    '2026-08-24': {'Falta Injustificada':66,'Proc. Desl.':17,'Banco de Horas ABS':2,'Atestado ABS':5},
-    '2026-08-25': {'Falta Injustificada':58,'Proc. Desl.':15,'Atestado ABS':5},
-    '2026-08-26': {'Falta Injustificada':52,'Banco de Horas ABS':1,'Proc. Desl.':18,'Atestado ABS':6},
-    '2026-08-27': {'Falta Injustificada':49,'Banco de Horas ABS':2,'Proc. Desl.':7,'Atestado ABS':6},
-    '2026-08-28': {'Falta Injustificada':57,'Banco de Horas ABS':1,'Proc. Desl.':7,'Atestado ABS':10},
-    '2026-08-29': {'Falta Injustificada':57,'Banco de Horas ABS':6,'Proc. Desl.':11,'Atestado ABS':11},
-    '2026-08-30': {'Falta Injustificada':62,'Banco de Horas ABS':1,'Proc. Desl.':8,'Atestado ABS':9},
-    '2026-08-31': {'Falta Injustificada':62,'Banco de Horas ABS':2,'Proc. Desl.':8,'Atestado ABS':11},
-    '2026-09-01': {'Falta Injustificada':61,'Banco de Horas ABS':4,'Proc. Desl.':6,'Atestado ABS':8},
-    '2026-09-02': {'Falta Injustificada':39,'Banco de Horas ABS':1,'Proc. Desl.':8,'Atestado ABS':8},
-    '2026-09-03': {'Falta Injustificada':33,'Banco de Horas ABS':2,'Proc. Desl.':17,'Atestado ABS':9},
-    '2026-09-04': {'Sem Resposta':5,'Falta Injustificada':38,'Proc. Desl.':17,'Banco de Horas ABS':3,'Atestado ABS':9},
-    '2026-09-05': {'Falta Injustificada':34,'Banco de Horas ABS':4,'Proc. Desl.':15,'Atestado ABS':11},
-    '2026-09-06': {'Sem Resposta':1,'Falta Injustificada':30,'Banco de Horas ABS':1,'Proc. Desl.':14,'Atestado ABS':14},
-    '2026-09-07': {'Sem Resposta':1,'Falta Injustificada':26,'Proc. Desl.':14,'Atestado ABS':8},
-    '2026-09-08': {'Falta Injustificada':31,'Banco de Horas ABS':1,'Proc. Desl.':16,'Atestado ABS':8},
-    '2026-09-09': {'Falta Injustificada':27,'Proc. Desl.':7,'Banco de Horas ABS':4,'Atestado ABS':5},
-    '2026-09-10': {'Proc. Desl.':13,'Falta Injustificada':21,'Sem Resposta':2,'Banco de Horas ABS':4,'Atestado ABS':5},
-    '2026-09-11': {'Falta Injustificada':24,'Atestado ABS':5,'Proc. Desl.':11,'Banco de Horas ABS':3},
-    '2026-09-12': {'Falta Injustificada':14,'Banco de Horas ABS':2,'Proc. Desl.':9,'Atestado ABS':7,'Sem Resposta':1},
-    '2026-09-13': {'Falta Injustificada':19,'Proc. Desl.':7,'Atestado ABS':5,'Banco de Horas ABS':1,'Sem Resposta':1}
-  }
-};
-
-// ESCALADOS por dia/turno (denominador oficial do ABS%) — usado só pra
-// converter o pareto de ABS de contagem bruta pra PERCENTUAL, igual o
-// cálculo oficial: soma dos motivos no intervalo ÷ soma de escalados no
-// mesmo intervalo × 100. Garante que a soma das fatias do pareto bate
-// exatamente com o ABS% agregado do período selecionado.
-const ESCALADOS_DAILY = {
-  T1: {'2026-08-15':207,'2026-08-16':207,'2026-08-17':192,'2026-08-18':210,'2026-08-19':201,'2026-08-20':205,'2026-08-21':201,'2026-08-22':204,'2026-08-23':200,'2026-08-24':192,'2026-08-25':188,'2026-08-26':243,'2026-08-27':203,'2026-08-28':183,'2026-08-29':177,'2026-08-30':187,'2026-08-31':189,'2026-09-01':180,'2026-09-02':161,'2026-09-03':184,'2026-09-04':179,'2026-09-05':181,'2026-09-06':178,'2026-09-07':188,'2026-09-08':193,'2026-09-09':163,'2026-09-10':164,'2026-09-11':182,'2026-09-12':171,'2026-09-13':188},
-  T2: {'2026-08-15':229,'2026-08-16':229,'2026-08-17':231,'2026-08-18':231,'2026-08-19':233,'2026-08-20':229,'2026-08-21':220,'2026-08-22':222,'2026-08-23':218,'2026-08-24':221,'2026-08-25':226,'2026-08-26':223,'2026-08-27':220,'2026-08-28':216,'2026-08-29':214,'2026-08-30':218,'2026-08-31':219,'2026-09-01':208,'2026-09-02':208,'2026-09-03':222,'2026-09-04':208,'2026-09-05':201,'2026-09-06':196,'2026-09-07':192,'2026-09-08':212,'2026-09-09':201,'2026-09-10':205,'2026-09-11':193,'2026-09-12':195,'2026-09-13':193},
-  T3: {'2026-08-15':228,'2026-08-16':256,'2026-08-17':272,'2026-08-18':271,'2026-08-19':271,'2026-08-20':258,'2026-08-21':264,'2026-08-22':259,'2026-08-23':254,'2026-08-24':263,'2026-08-25':254,'2026-08-26':257,'2026-08-27':248,'2026-08-28':249,'2026-08-29':252,'2026-08-30':239,'2026-08-31':234,'2026-09-01':241,'2026-09-02':231,'2026-09-03':254,'2026-09-04':230,'2026-09-05':225,'2026-09-06':196,'2026-09-07':190,'2026-09-08':220,'2026-09-09':216,'2026-09-10':203,'2026-09-11':191,'2026-09-12':158,'2026-09-13':165}
-};
-
-// Entrevista de ABS — total de TLs (GESTOR distinto na Lista_Casos) vs.
-// quantos têm pelo menos 1 ocorrência de Falta Injustificada/Atestado ABS
-// do mês atual (setembro/2026) ainda não registrada na aba "Output
-// Entrevista" E cujo colaborador já retornou ao trabalho (mesma regra do
-// buildEntrevistaABS_). É um snapshot "mês corrente", não por dia — por
-// isso usa a mesma chave de data (09/09) como âncora em todos os turnos.
-const ENTREVISTA = {
-  ALL: { '2026-09-09': { tlsTotal: 60, tlsComPendencia: 41 } },
-  T1:  { '2026-09-09': { tlsTotal: 16, tlsComPendencia: 10 } },
-  T2:  { '2026-09-09': { tlsTotal: 22, tlsComPendencia: 12 } },
-  T3:  { '2026-09-09': { tlsTotal: 25, tlsComPendencia: 19 } }
-};
-
-// Top 10 Ofensores — Troca de Transportadora, quebrado POR DIA e por turno
-// (2026-08-15 a 2026-09-09), extraído em 2026-09-14. Mesma lógica de
-// agregação por intervalo do DELAY_OFFENDERS_DAILY/ABS_OFFENDERS_DAILY.
-//
-// Fonte: meli-bi-data.WHOWNER.BT_SHP_FOS_REAUTHORIZATION_BY_USER (fluxo de
-// reautorização de transportadora, streaming). "ORIGEM" = OUTBOUND_CHANNEL_FROM
-// (canal/hub em que o pacote estava roteado antes da troca); "TROCAS" =
-// contagem de eventos onde OUTBOUND_CHANNEL_FROM != OUTBOUND_CHANNEL_TO
-// (mudança real de canal/transportadora), filtrado a FACILITY='BRXSP24' e
-// SITE='MLB'. Turno derivado por faixa de hora sobre REAUTHORIZATION_DATE,
-// igual às demais métricas (T1 06h-14h, T2 14h-22h, T3 22h-06h).
-//
-// Categorias fixas = as 10 origens com mais trocas no período inteiro
-// (15/08 a 09/09); o resto cai em "Outros". Esta é uma definição própria
-// deste relatório — não foi validada contra o painel "Troca de
-// Transportadora" do Grid (grid.adminml.com), cujos números usam algum
-// filtro/janela adicional que não foi possível reproduzir só pela tabela.
-const TROCA_TRANSPORTADORA_DAILY = {
-  T1: {
-    '2026-08-15': {'loghub':228,'Outros':136,'imihub1':104,'jadhub':77,'domhub1':73,'imisl1':56,'xsp9_2':19,'xsp9_1':13,'xsp9_6':10,'jetsl1':3},
-    '2026-08-16': {'Outros':133,'loghub':26,'jadhub':16,'xsp9_2':13,'jetsl1':5,'xsp9_1':4,'xsp9_6':2,'domhub1':1},
-    '2026-08-17': {'loghub':188,'domhub1':127,'imihub1':116,'Outros':107,'jetsl1':95,'jadhub':38,'xsp9_2':19,'imisl1':15,'xsp9_6':8,'xsp9_1':2},
-    '2026-08-18': {'loghub':217,'imihub1':177,'domhub1':121,'jadhub':111,'Outros':37,'xsp9_2':32,'imisl1':31,'xsp9_1':10,'jetsl1':7},
-    '2026-08-19': {'jadhub':208,'loghub':179,'imihub1':135,'domhub1':114,'Outros':76,'imisl1':37,'xsp9_2':16,'jetsl1':9,'xsp9_6':7,'xsp9_1':5},
-    '2026-08-20': {'loghub':265,'jadhub':234,'imihub1':201,'domhub1':171,'Outros':150,'imisl1':61,'xsp9_2':20,'xsp9_1':8,'xsp9_6':5,'jetsl1':4},
-    '2026-08-21': {'jetsl1':368,'loghub':298,'imihub1':221,'jadhub':210,'domhub1':138,'Outros':99,'imisl1':69,'xsp9_2':38,'xsp9_1':21,'xsp9_6':16,'jethub1':5},
-    '2026-08-22': {'jetsl1':541,'jadhub':255,'loghub':222,'domhub1':214,'imihub1':185,'xsp9_2':128,'xsp9_1':95,'Outros':73,'imisl1':73,'jethub1':25,'xsp9_6':10},
-    '2026-08-23': {'jetsl1':386,'Outros':248,'jadhub':246,'domhub1':86,'xsp9_2':58,'loghub':22,'xsp9_6':12,'xsp9_1':9,'jethub1':6,'imisl1':5,'imihub1':3},
-    '2026-08-24': {'jetsl1':638,'loghub':316,'xsp9_2':277,'jethub1':268,'imihub1':217,'jadhub':191,'domhub1':108,'imisl1':59,'Outros':59,'xsp9_1':16,'xsp9_6':8},
-    '2026-08-25': {'jetsl1':1122,'xsp9_2':316,'jadhub':200,'loghub':196,'jethub1':139,'domhub1':105,'Outros':103,'imihub1':38,'imisl1':19,'xsp9_6':11,'xsp9_1':7},
-    '2026-08-26': {'jetsl1':695,'jadhub':336,'imihub1':332,'Outros':186,'loghub':141,'domhub1':137,'jethub1':70,'xsp9_2':62,'imisl1':48,'xsp9_1':23,'xsp9_6':17},
-    '2026-08-27': {'jetsl1':907,'Outros':325,'jadhub':257,'loghub':238,'imihub1':233,'domhub1':148,'imisl1':143,'xsp9_2':109,'jethub1':71,'xsp9_1':31,'xsp9_6':30},
-    '2026-08-28': {'jetsl1':1552,'loghub':246,'jadhub':206,'imihub1':194,'imisl1':194,'Outros':176,'domhub1':117,'jethub1':107,'xsp9_2':88,'xsp9_1':34,'xsp9_6':16},
-    '2026-08-29': {'jetsl1':1504,'jadhub':314,'loghub':312,'domhub1':221,'xsp9_2':166,'Outros':164,'imihub1':157,'imisl1':83,'jethub1':73,'xsp9_1':39,'xsp9_6':27},
-    '2026-08-30': {'jadhub':266,'imihub1':226,'Outros':223,'loghub':185,'domhub1':148,'imisl1':109,'jetsl1':97,'xsp9_2':77,'xsp9_1':23,'xsp9_6':17,'jethub1':17},
-    '2026-08-31': {'jetsl1':1206,'jadhub':266,'imihub1':232,'loghub':135,'domhub1':107,'Outros':85,'xsp9_2':67,'imisl1':51,'jethub1':47,'xsp9_1':23,'xsp9_6':9},
-    '2026-09-01': {'jetsl1':1210,'loghub':241,'jadhub':130,'xsp9_2':128,'jethub1':126,'domhub1':91,'Outros':74,'imihub1':72,'imisl1':55,'xsp9_1':34,'xsp9_6':14},
-    '2026-09-02': {'Outros':283,'loghub':226,'jetsl1':204,'jadhub':158,'imihub1':149,'xsp9_2':130,'domhub1':126,'xsp9_1':41,'imisl1':35,'jethub1':33,'xsp9_6':33},
-    '2026-09-03': {'Outros':329,'jadhub':238,'jetsl1':177,'domhub1':95,'loghub':84,'imihub1':75,'xsp9_2':48,'xsp9_6':25,'imisl1':24,'jethub1':22,'xsp9_1':18},
-    '2026-09-04': {'jetsl1':371,'loghub':307,'Outros':293,'jadhub':286,'xsp9_2':148,'imihub1':143,'jethub1':68,'domhub1':61,'imisl1':52,'xsp9_6':36,'xsp9_1':28},
-    '2026-09-05': {'jetsl1':320,'loghub':277,'jadhub':202,'xsp9_2':182,'Outros':176,'domhub1':143,'imihub1':120,'jethub1':57,'xsp9_6':30,'xsp9_1':23,'imisl1':18},
-    '2026-09-06': {'jetsl1':359,'jadhub':199,'Outros':150,'xsp9_2':96,'loghub':79,'domhub1':21,'jethub1':19,'xsp9_6':18,'imihub1':13,'xsp9_1':12,'imisl1':3},
-    '2026-09-07': {'loghub':244,'imihub1':223,'xsp9_2':155,'jadhub':149,'jetsl1':132,'domhub1':86,'Outros':57,'jethub1':27,'imisl1':24,'xsp9_1':20,'xsp9_6':13},
-    '2026-09-08': {'loghub':306,'xsp9_2':134,'imihub1':105,'jadhub':86,'Outros':70,'domhub1':51,'jetsl1':21,'xsp9_1':19,'xsp9_6':16,'imisl1':15,'jethub1':14},
-    '2026-09-09': {'jetsl1':268,'loghub':86,'imihub1':57,'Outros':57,'jadhub':56,'domhub1':54,'xsp9_2':42,'jethub1':29,'xsp9_6':8,'xsp9_1':6,'imisl1':5},
-    '2026-09-10': {'loghub':99,'domhub1':47,'imihub1':57,'jadhub':52,'imisl1':18,'xsp9_2':32,'xsp9_1':24,'jetsl1':285,'jethub1':26,'xsp9_6':27,'Outros':292},
-    '2026-09-11': {'loghub':101,'domhub1':43,'imihub1':68,'jadhub':63,'jetsl1':146,'jethub1':21,'imisl1':23,'xsp9_2':19,'xsp9_1':9,'xsp9_6':2,'Outros':120},
-    '2026-09-12': {'loghub':299,'jadhub':97,'jetsl1':226,'imihub1':136,'domhub1':67,'jethub1':29,'xsp9_2':17,'xsp9_1':21,'imisl1':24,'xsp9_6':17,'Outros':103},
-    '2026-09-13': {'jetsl1':204,'jadhub':47,'imihub1':3,'jethub1':19,'xsp9_2':18,'domhub1':1,'xsp9_1':29,'loghub':10,'imisl1':1,'xsp9_6':28,'Outros':59},
-  },
-  T2: {
-    '2026-08-15': {'loghub':319,'jadhub':206,'Outros':201,'imihub1':78,'domhub1':46,'xsp9_2':33,'imisl1':17,'xsp9_1':10,'xsp9_6':10},
-    '2026-08-16': {'imihub1':286,'jadhub':124,'Outros':115,'loghub':100,'xsp9_2':24,'imisl1':19,'domhub1':13,'xsp9_1':9,'xsp9_6':3},
-    '2026-08-17': {'loghub':327,'jadhub':218,'imihub1':166,'Outros':160,'imisl1':64,'domhub1':33,'jetsl1':19,'xsp9_2':18,'xsp9_1':15,'xsp9_6':12},
-    '2026-08-18': {'jadhub':247,'loghub':138,'imihub1':107,'Outros':88,'imisl1':56,'xsp9_2':41,'domhub1':36,'xsp9_1':15,'jetsl1':3,'xsp9_6':2},
-    '2026-08-19': {'imihub1':404,'loghub':321,'jadhub':285,'Outros':222,'imisl1':141,'xsp9_2':44,'domhub1':31,'xsp9_6':6,'xsp9_1':5,'jetsl1':2},
-    '2026-08-20': {'jadhub':428,'imihub1':323,'loghub':250,'Outros':137,'domhub1':109,'imisl1':92,'xsp9_2':36,'xsp9_6':10,'xsp9_1':9,'jetsl1':7,'jethub1':1},
-    '2026-08-21': {'jadhub':239,'loghub':158,'imihub1':157,'jetsl1':115,'Outros':113,'domhub1':101,'imisl1':83,'xsp9_2':37,'xsp9_6':10,'jethub1':8,'xsp9_1':6},
-    '2026-08-22': {'jadhub':343,'jetsl1':229,'loghub':225,'imihub1':158,'Outros':79,'xsp9_2':78,'domhub1':73,'imisl1':64,'xsp9_1':16,'xsp9_6':13,'jethub1':8},
-    '2026-08-23': {'xsp9_2':569,'jadhub':308,'jetsl1':208,'Outros':110,'domhub1':57,'xsp9_1':44,'loghub':15,'xsp9_6':14,'jethub1':11,'imihub1':5},
-    '2026-08-24': {'xsp9_2':470,'jetsl1':280,'jadhub':227,'loghub':205,'Outros':83,'domhub1':80,'imisl1':38,'imihub1':35,'jethub1':34,'xsp9_1':18,'xsp9_6':5},
-    '2026-08-25': {'xsp9_2':411,'jetsl1':312,'Outros':151,'jadhub':130,'imihub1':120,'domhub1':109,'loghub':94,'jethub1':69,'imisl1':55,'xsp9_6':15,'xsp9_1':12},
-    '2026-08-26': {'jetsl1':464,'jadhub':320,'loghub':229,'Outros':146,'domhub1':140,'imihub1':140,'jethub1':106,'xsp9_2':103,'imisl1':60,'xsp9_1':18,'xsp9_6':15},
-    '2026-08-27': {'jetsl1':849,'jadhub':256,'Outros':126,'domhub1':110,'imihub1':110,'xsp9_2':89,'loghub':84,'imisl1':83,'jethub1':41,'xsp9_1':12,'xsp9_6':10},
-    '2026-08-28': {'jetsl1':1171,'jadhub':262,'Outros':146,'jethub1':134,'xsp9_2':105,'imihub1':103,'domhub1':97,'loghub':88,'imisl1':83,'xsp9_1':27,'xsp9_6':21},
-    '2026-08-29': {'jadhub':357,'jetsl1':306,'loghub':132,'domhub1':113,'Outros':76,'xsp9_2':60,'imihub1':28,'jethub1':13,'xsp9_1':11,'xsp9_6':4,'imisl1':3},
-    '2026-08-30': {'jadhub':199,'domhub1':98,'Outros':91,'loghub':47,'jetsl1':33,'xsp9_2':33,'jethub1':24,'imihub1':24,'xsp9_6':21,'xsp9_1':11,'imisl1':5},
-    '2026-08-31': {'jetsl1':511,'xsp9_2':189,'jadhub':175,'loghub':170,'jethub1':97,'Outros':88,'imihub1':39,'imisl1':35,'domhub1':32,'xsp9_6':11,'xsp9_1':11},
-    '2026-09-01': {'jetsl1':317,'jadhub':218,'xsp9_2':213,'domhub1':205,'loghub':189,'Outros':106,'imihub1':85,'jethub1':73,'imisl1':27,'xsp9_1':21,'xsp9_6':18},
-    '2026-09-02': {'loghub':135,'domhub1':133,'jadhub':128,'jetsl1':87,'imihub1':74,'xsp9_2':57,'Outros':37,'jethub1':36,'imisl1':24,'xsp9_1':8,'xsp9_6':4},
-    '2026-09-03': {'loghub':322,'Outros':182,'jetsl1':161,'imihub1':138,'jadhub':107,'domhub1':105,'xsp9_2':95,'jethub1':49,'imisl1':43,'xsp9_1':15,'xsp9_6':10},
-    '2026-09-04': {'loghub':417,'jetsl1':347,'xsp9_2':222,'jadhub':220,'Outros':153,'jethub1':131,'imihub1':113,'domhub1':104,'imisl1':33,'xsp9_6':19,'xsp9_1':16},
-    '2026-09-05': {'loghub':378,'jadhub':232,'imihub1':123,'domhub1':112,'Outros':111,'jetsl1':83,'xsp9_2':73,'jethub1':24,'imisl1':23,'xsp9_1':13,'xsp9_6':7},
-    '2026-09-06': {'xsp9_2':224,'loghub':215,'jetsl1':145,'Outros':138,'jadhub':107,'imihub1':77,'jethub1':69,'imisl1':34,'domhub1':29,'xsp9_1':20,'xsp9_6':15},
-    '2026-09-07': {'loghub':605,'jadhub':197,'domhub1':151,'Outros':97,'imihub1':77,'xsp9_2':44,'xsp9_1':39,'xsp9_6':32,'jetsl1':21,'imisl1':17,'jethub1':12},
-    '2026-09-08': {'loghub':126,'jadhub':106,'domhub1':98,'imihub1':81,'xsp9_2':74,'Outros':60,'jetsl1':20,'xsp9_1':17,'imisl1':14,'jethub1':4,'xsp9_6':2},
-    '2026-09-09': {'loghub':152,'imihub1':135,'jadhub':108,'Outros':101,'domhub1':54,'jetsl1':26,'xsp9_6':26,'xsp9_2':20,'imisl1':18,'jethub1':17,'xsp9_1':12},
-    '2026-09-10': {'loghub':221,'domhub1':75,'jadhub':91,'imihub1':226,'jethub1':22,'imisl1':34,'xsp9_2':25,'jetsl1':21,'xsp9_6':8,'xsp9_1':6,'Outros':190},
-    '2026-09-11': {'imisl1':34,'imihub1':168,'loghub':294,'domhub1':54,'jadhub':85,'jetsl1':21,'xsp9_2':24,'jethub1':20,'xsp9_1':43,'xsp9_6':36,'Outros':130},
-    '2026-09-12': {'imihub1':109,'xsp9_6':6,'domhub1':55,'xsp9_1':10,'loghub':153,'jadhub':96,'imisl1':16,'jetsl1':27,'jethub1':13,'xsp9_2':56,'Outros':152},
-    '2026-09-13': {'jetsl1':101,'imihub1':55,'xsp9_6':6,'loghub':47,'imisl1':6,'xsp9_1':6,'domhub1':3,'jadhub':39,'xsp9_2':7,'Outros':62,'jethub1':15},
-  },
-  T3: {
-    '2026-08-15': {'jadhub':102,'Outros':72,'xsp9_1':30,'domhub1':22,'xsp9_6':19,'xsp9_2':15,'loghub':13,'imihub1':9},
-    '2026-08-16': {'Outros':107,'jadhub':43,'xsp9_2':17,'xsp9_6':15,'domhub1':13,'loghub':13,'jetsl1':10,'xsp9_1':9,'imihub1':2},
-    '2026-08-17': {'Outros':58,'loghub':42,'jadhub':31,'xsp9_2':17,'xsp9_1':17,'xsp9_6':15,'jetsl1':15,'imihub1':9,'domhub1':6,'imisl1':3},
-    '2026-08-18': {'Outros':111,'loghub':82,'jadhub':56,'imihub1':33,'xsp9_2':30,'domhub1':28,'xsp9_1':16,'xsp9_6':15,'imisl1':14,'jetsl1':4},
-    '2026-08-19': {'loghub':120,'jadhub':119,'Outros':89,'xsp9_1':37,'domhub1':36,'imihub1':27,'xsp9_2':27,'xsp9_6':15,'jetsl1':8,'imisl1':2},
-    '2026-08-20': {'jadhub':190,'Outros':156,'xsp9_6':61,'loghub':53,'xsp9_1':39,'domhub1':38,'imihub1':36,'xsp9_2':24,'jetsl1':4,'imisl1':1},
-    '2026-08-21': {'Outros':154,'jadhub':92,'jetsl1':81,'loghub':55,'domhub1':41,'xsp9_1':20,'xsp9_6':19,'xsp9_2':14,'imihub1':10,'imisl1':6,'jethub1':1},
-    '2026-08-22': {'jadhub':507,'jetsl1':157,'Outros':103,'loghub':63,'xsp9_6':53,'domhub1':49,'imihub1':46,'xsp9_2':38,'xsp9_1':32,'imisl1':6},
-    '2026-08-23': {'jadhub':410,'Outros':176,'xsp9_1':67,'jetsl1':65,'domhub1':51,'xsp9_6':46,'xsp9_2':31,'loghub':30,'imisl1':3,'imihub1':3,'jethub1':2},
-    '2026-08-24': {'jadhub':601,'xsp9_2':226,'jethub1':171,'Outros':70,'xsp9_1':53,'jetsl1':40,'xsp9_6':35,'domhub1':29,'imihub1':25,'loghub':10},
-    '2026-08-25': {'xsp9_2':745,'jetsl1':619,'Outros':143,'jadhub':99,'jethub1':84,'loghub':73,'imisl1':52,'imihub1':42,'xsp9_1':40,'xsp9_6':26,'domhub1':12},
-    '2026-08-26': {'jetsl1':290,'jadhub':217,'loghub':175,'Outros':126,'jethub1':107,'xsp9_2':88,'xsp9_1':69,'imihub1':41,'imisl1':37,'xsp9_6':31,'domhub1':23},
-    '2026-08-27': {'jadhub':311,'jetsl1':283,'Outros':236,'xsp9_2':86,'jethub1':61,'imihub1':46,'domhub1':46,'xsp9_6':45,'xsp9_1':42,'loghub':37,'imisl1':25},
-    '2026-08-28': {'jetsl1':609,'jadhub':471,'xsp9_2':233,'Outros':206,'jethub1':197,'loghub':89,'domhub1':62,'imihub1':36,'xsp9_6':35,'imisl1':30,'xsp9_1':29},
-    '2026-08-29': {'jetsl1':624,'jadhub':518,'Outros':242,'loghub':98,'domhub1':97,'xsp9_2':82,'imisl1':70,'imihub1':47,'jethub1':29,'xsp9_1':23,'xsp9_6':22},
-    '2026-08-30': {'jadhub':445,'jetsl1':414,'Outros':167,'loghub':123,'domhub1':98,'xsp9_2':54,'imihub1':43,'jethub1':17,'xsp9_6':15,'imisl1':14,'xsp9_1':14},
-    '2026-08-31': {'Outros':81,'loghub':64,'domhub1':61,'jadhub':51,'imihub1':36,'xsp9_2':30,'jetsl1':25,'xsp9_6':14,'xsp9_1':7,'jethub1':7,'imisl1':6},
-    '2026-09-01': {'jetsl1':363,'loghub':276,'jadhub':164,'Outros':155,'domhub1':102,'xsp9_2':84,'xsp9_6':55,'xsp9_1':55,'imihub1':51,'jethub1':43,'imisl1':19},
-    '2026-09-02': {'jadhub':280,'jetsl1':229,'loghub':179,'Outros':178,'xsp9_2':175,'domhub1':163,'imihub1':47,'imisl1':42,'xsp9_1':34,'jethub1':27,'xsp9_6':18},
-    '2026-09-03': {'Outros':223,'jetsl1':211,'loghub':178,'jadhub':177,'xsp9_2':155,'domhub1':84,'xsp9_1':38,'imihub1':38,'jethub1':28,'imisl1':25,'xsp9_6':20},
-    '2026-09-04': {'jadhub':244,'Outros':230,'loghub':170,'jetsl1':145,'xsp9_2':137,'imihub1':84,'jethub1':72,'domhub1':50,'imisl1':33,'xsp9_1':25,'xsp9_6':21},
-    '2026-09-05': {'Outros':298,'jetsl1':237,'loghub':208,'jadhub':180,'xsp9_2':150,'imihub1':72,'jethub1':68,'domhub1':54,'xsp9_1':41,'xsp9_6':29,'imisl1':21},
-    '2026-09-06': {'Outros':264,'loghub':232,'jadhub':212,'xsp9_2':131,'jetsl1':116,'imihub1':66,'domhub1':63,'jethub1':35,'xsp9_1':22,'xsp9_6':19,'imisl1':10},
-    '2026-09-07': {'jadhub':279,'loghub':117,'xsp9_2':110,'jetsl1':96,'Outros':76,'imihub1':66,'domhub1':39,'jethub1':27,'xsp9_1':19,'xsp9_6':10,'imisl1':8},
-    '2026-09-08': {'loghub':197,'jadhub':137,'Outros':98,'xsp9_2':81,'jetsl1':77,'imihub1':35,'jethub1':25,'domhub1':15,'xsp9_1':15,'xsp9_6':13,'imisl1':12},
-    '2026-09-09': {'loghub':126,'Outros':120,'jadhub':116,'domhub1':66,'xsp9_6':36,'xsp9_2':33,'jetsl1':30,'xsp9_1':25,'jethub1':10,'imihub1':9,'imisl1':2},
-    '2026-09-10': {'xsp9_6':2,'xsp9_1':6,'domhub1':39,'imisl1':19,'jetsl1':36,'jethub1':23,'imihub1':125,'loghub':62,'jadhub':124,'xsp9_2':18,'Outros':208},
-    '2026-09-11': {'imihub1':57,'domhub1':67,'loghub':114,'imisl1':23,'jadhub':137,'Outros':307,'xsp9_1':17,'xsp9_2':32,'jethub1':49,'jetsl1':125,'xsp9_6':17},
-    '2026-09-12': {'loghub':252,'xsp9_6':12,'imihub1':74,'domhub1':21,'xsp9_2':39,'imisl1':47,'jadhub':90,'xsp9_1':13,'jethub1':47,'jetsl1':75,'Outros':138},
-    '2026-09-13': {'loghub':38,'imihub1':24,'xsp9_1':11,'imisl1':11,'jethub1':22,'domhub1':18,'jetsl1':187,'jadhub':54,'xsp9_6':14,'Outros':139,'xsp9_2':27},
-  },
-};
-
-/* ==========================================================================
-   A partir daqui é só motor de render — não precisa editar pra atualizar
-   dados, só pra mudar layout/comportamento.
-=========================================================================== */
+const APPS_SCRIPT_URL = 'COLE_AQUI_A_URL_DO_WEB_APP_EXEC';
 
 const TURNOS = ['ALL', 'T1', 'T2', 'T3'];
 let turnoAtual = 'ALL';
+let supervisorAtual = '';
+let tlAtual = '';
 let charts = {};
+let payloadAtual = {};
+
+let RAW_DATA = { ALL:{}, T1:{}, T2:{}, T3:{} };
+let DELAY_OFFENDERS_DAILY = { T1:{}, T2:{}, T3:{} };
+let ABS_OFFENDERS_DAILY = { T1:{}, T2:{}, T3:{} };
+let ESCALADOS_DAILY = { T1:{}, T2:{}, T3:{} };
+let TROCA_TRANSPORTADORA_DAILY = { T1:{}, T2:{}, T3:{} };
+let ENTREVISTA = { ALL:{}, T1:{}, T2:{}, T3:{} };
+let ABS_POR_TL_DAILY = { T1:{}, T2:{}, T3:{} };
+let ABS_MOTIVO_POR_TL_DAILY = { T1:{}, T2:{}, T3:{} };
+let ABS_POR_SUPERVISOR_DAILY = { T1:{}, T2:{}, T3:{} };
+let ABS_MOTIVO_POR_SUPERVISOR_DAILY = { T1:{}, T2:{}, T3:{} };
+let FILTROS_ABS = { supervisores:[], tls:[], tlsPorSupervisor:{}, supervisorPorTl:{} };
+
+function estruturaTurnos(valor, incluiAll){
+  const base = incluiAll
+    ? { ALL:{}, T1:{}, T2:{}, T3:{} }
+    : { T1:{}, T2:{}, T3:{} };
+  return Object.assign(base, valor || {});
+}
+
+function obterUrlBackend(){
+  const params = new URLSearchParams(window.location.search);
+  const viaQuery = (params.get('api') || '').trim();
+
+  if (viaQuery){
+    try { localStorage.setItem('painelAppsScriptUrl', viaQuery); } catch (_) {}
+    return viaQuery;
+  }
+
+  try {
+    const salva = (localStorage.getItem('painelAppsScriptUrl') || '').trim();
+    if (salva) return salva;
+  } catch (_) {}
+
+  return APPS_SCRIPT_URL.trim();
+}
+
+function urlBackendConfigurada(url){
+  return /^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/(exec|dev)(?:\?|$)/i.test(url) &&
+    !url.includes('COLE_AQUI');
+}
+
+function carregarJsonp(url){
+  return new Promise((resolve, reject) => {
+    const callback = '__painelCallback_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+    const script = document.createElement('script');
+    const separador = url.includes('?') ? '&' : '?';
+    let finalizado = false;
+
+    const limpar = () => {
+      if (script.parentNode) script.parentNode.removeChild(script);
+      try { delete window[callback]; } catch (_) { window[callback] = undefined; }
+    };
+
+    const timer = window.setTimeout(() => {
+      if (finalizado) return;
+      finalizado = true;
+      limpar();
+      reject(new Error('O Apps Script não respondeu dentro do limite de tempo.'));
+    }, 25000);
+
+    window[callback] = dados => {
+      if (finalizado) return;
+      finalizado = true;
+      window.clearTimeout(timer);
+      limpar();
+      resolve(dados);
+    };
+
+    script.onerror = () => {
+      if (finalizado) return;
+      finalizado = true;
+      window.clearTimeout(timer);
+      limpar();
+      reject(new Error('Não foi possível acessar o Web App do Apps Script.'));
+    };
+
+    script.src = url + separador + 'callback=' + encodeURIComponent(callback) + '&_=' + Date.now();
+    script.async = true;
+    document.head.appendChild(script);
+  });
+}
+
+function normalizarFiltrosAbs(payload){
+  const recebido = payload.filtrosAbs || {};
+  const recebidoPorSupervisor = recebido.tlsPorSupervisor || payload.supervisorTl || {};
+  const recebidoPorTl = recebido.supervisorPorTl || payload.supervisorPorTl || payload.gestorSupervisor || {};
+  const tlsPorSupervisor = {};
+  const supervisorPorTl = Object.assign({}, recebidoPorTl);
+  const comparar = (a,b) => String(a).localeCompare(String(b), 'pt-BR');
+
+  Object.keys(recebidoPorSupervisor).forEach(supervisor => {
+    tlsPorSupervisor[supervisor] = (recebidoPorSupervisor[supervisor] || []).slice();
+  });
+
+  // Compatibilidade com o payload anterior: monta Supervisor -> TL a partir
+  // do mapa gestorSupervisor quando filtrosAbs ainda não existe no JSON.
+  Object.keys(supervisorPorTl).forEach(tl => {
+    const supervisor = supervisorPorTl[tl];
+    if (!supervisor) return;
+    if (!tlsPorSupervisor[supervisor]) tlsPorSupervisor[supervisor] = [];
+    if (!tlsPorSupervisor[supervisor].includes(tl)) tlsPorSupervisor[supervisor].push(tl);
+  });
+
+  Object.keys(tlsPorSupervisor).forEach(supervisor => {
+    tlsPorSupervisor[supervisor].sort(comparar);
+  });
+
+  const supervisores = (recebido.supervisores && recebido.supervisores.length
+    ? recebido.supervisores.slice()
+    : Object.keys(tlsPorSupervisor)).sort(comparar);
+
+  const tls = (recebido.tls && recebido.tls.length
+    ? recebido.tls.slice()
+    : Object.keys(supervisorPorTl)).sort(comparar);
+
+  return { supervisores, tls, tlsPorSupervisor, supervisorPorTl };
+}
+
+function aplicarPayload(payload){
+  if (!payload || typeof payload !== 'object' || !payload.rawData){
+    throw new Error('O Web App respondeu, mas o JSON não contém o campo rawData. Execute atualizarDados() no Apps Script.');
+  }
+
+  payloadAtual = payload;
+  RAW_DATA = estruturaTurnos(payload.rawData, true);
+  DELAY_OFFENDERS_DAILY = estruturaTurnos(payload.delayOffenders, false);
+  ABS_OFFENDERS_DAILY = estruturaTurnos(payload.absOffenders, false);
+  ESCALADOS_DAILY = estruturaTurnos(payload.escalados, false);
+  TROCA_TRANSPORTADORA_DAILY = estruturaTurnos(payload.trocaOffenders, false);
+  ENTREVISTA = estruturaTurnos(payload.entrevista, true);
+
+  ABS_POR_TL_DAILY = estruturaTurnos(payload.absPorTl || payload.absPorGestor, false);
+  ABS_MOTIVO_POR_TL_DAILY = estruturaTurnos(payload.absMotivoPorTl || payload.absMotivoPorGestor, false);
+  ABS_POR_SUPERVISOR_DAILY = estruturaTurnos(payload.absPorSupervisor, false);
+  ABS_MOTIVO_POR_SUPERVISOR_DAILY = estruturaTurnos(payload.absMotivoPorSupervisor, false);
+  FILTROS_ABS = normalizarFiltrosAbs(payload);
+}
 
 function fmtLabel(iso){
-  const [y,m,d] = iso.split('-');
-  return d + '/' + m;
+  if (!iso || !iso.includes('-')) return iso || '—';
+  const partes = iso.split('-');
+  return partes[2] + '/' + partes[1];
 }
 
 function datasNoIntervalo(inicio, fim){
   const out = [];
+  if (!inicio || !fim) return out;
   let cur = new Date(inicio + 'T00:00:00Z');
   const end = new Date(fim + 'T00:00:00Z');
   while (cur <= end){
@@ -821,38 +528,55 @@ function datasNoIntervalo(inicio, fim){
   return out;
 }
 
-function ultimos7dias(){
-  // âncora: último dia com dado real conhecido (13/09 — dado de 14/09 fica
-  // incompleto até o fechamento do dia). Ajuste se publicar depois com
-  // dados mais recentes preenchidos no RAW_DATA.
-  const fim = '2026-09-13';
+function limitesDisponiveis(){
+  const datas = new Set();
+  ['ALL','T1','T2','T3'].forEach(t => {
+    Object.keys(RAW_DATA[t] || {}).forEach(d => datas.add(d));
+  });
+  const ordenadas = [...datas].sort();
+  return {
+    inicio: payloadAtual.dataInicio || ordenadas[0] || '',
+    fim: payloadAtual.dataFim || ordenadas[ordenadas.length - 1] || ''
+  };
+}
+
+function ultimos7dias(fim, limiteInicio){
   const d = new Date(fim + 'T00:00:00Z');
   d.setUTCDate(d.getUTCDate() - 6);
-  const inicio = d.toISOString().slice(0,10);
+  let inicio = d.toISOString().slice(0,10);
+  if (limiteInicio && inicio < limiteInicio) inicio = limiteInicio;
   return { inicio, fim };
 }
 
 function getSerie(dataset, turno, datas){
-  const src = (dataset[turno] || dataset.ALL || {});
+  const src = dataset[turno] || dataset.ALL || {};
   return datas.map(d => src[d] || null);
 }
 
 function ultimoDisponivel(dataset, turno, datas){
-  const src = (dataset[turno] || dataset.ALL || {});
+  const src = dataset[turno] || dataset.ALL || {};
   for (let i = datas.length - 1; i >= 0; i--){
-    if (src[datas[i]]) return { data: datas[i], val: src[datas[i]] };
+    if (src[datas[i]]) return { data:datas[i], val:src[datas[i]] };
   }
   return null;
+}
+
+function ultimoSnapshot(dataset, turno){
+  const src = dataset[turno] || dataset.ALL || {};
+  const chaves = Object.keys(src).sort();
+  if (!chaves.length) return null;
+  const data = chaves[chaves.length - 1];
+  return { data, val:src[data] };
 }
 
 function paretoOrdenado(obj){
   return Object.entries(obj || {}).sort((a,b) => b[1] - a[1]);
 }
 
-// Soma um pareto diário (DELAY_OFFENDERS_DAILY / ABS_OFFENDERS_DAILY /
-// TROCA_TRANSPORTADORA_DAILY) por TODAS as datas do intervalo selecionado.
-// Se turno = ALL, soma T1+T2+T3 (evita duplicar os dados guardando um
-// "ALL" pré-calculado à parte).
+function turnosSelecionados(){
+  return turnoAtual === 'ALL' ? ['T1','T2','T3'] : [turnoAtual];
+}
+
 function somarOffendersNoPeriodo(dailyData, turno, datas){
   const turnos = turno === 'ALL' ? ['T1','T2','T3'] : [turno];
   const total = {};
@@ -861,7 +585,7 @@ function somarOffendersNoPeriodo(dailyData, turno, datas){
     datas.forEach(d => {
       const dia = porData[d];
       if (!dia) return;
-      Object.keys(dia).forEach(k => { total[k] = (total[k] || 0) + dia[k]; });
+      Object.keys(dia).forEach(k => { total[k] = (total[k] || 0) + Number(dia[k] || 0); });
     });
   });
   return total;
@@ -872,30 +596,129 @@ function somarEscaladosNoPeriodo(turno, datas){
   let total = 0;
   turnos.forEach(t => {
     const porData = ESCALADOS_DAILY[t] || {};
-    datas.forEach(d => { total += porData[d] || 0; });
+    datas.forEach(d => { total += Number(porData[d] || 0); });
   });
   return total;
 }
 
-// Remove a sigla/código do início do motivo (ex.: "CC - ", "AIR - ",
-// "OPC - ") — sobra só a descrição, que é o que interessa pra leitura.
+function filtroAbsAtivo(){
+  if (tlAtual) return { tipo:'TL', chave:tlAtual };
+  if (supervisorAtual) return { tipo:'SUPERVISOR', chave:supervisorAtual };
+  return null;
+}
+
+function infoAbsFiltroNoDia(turno, data, filtro){
+  if (filtro.tipo === 'TL'){
+    return (((ABS_POR_TL_DAILY[turno] || {})[data] || {})[filtro.chave]) || null;
+  }
+
+  const direto = (((ABS_POR_SUPERVISOR_DAILY[turno] || {})[data] || {})[filtro.chave]);
+  if (direto) return direto;
+
+  // Compatibilidade: se o backend ainda não publicou absPorSupervisor,
+  // agrega no navegador todos os TLs vinculados ao Supervisor.
+  let a = 0;
+  let e = 0;
+  let encontrou = false;
+  const tls = FILTROS_ABS.tlsPorSupervisor[filtro.chave] || [];
+  tls.forEach(tl => {
+    const info = (((ABS_POR_TL_DAILY[turno] || {})[data] || {})[tl]);
+    if (!info) return;
+    encontrou = true;
+    a += Number(info.a || 0);
+    e += Number(info.e || 0);
+  });
+  return encontrou ? {a,e} : null;
+}
+
+function motivosAbsFiltroNoDia(turno, data, filtro){
+  if (filtro.tipo === 'TL'){
+    return (((ABS_MOTIVO_POR_TL_DAILY[turno] || {})[data] || {})[filtro.chave]) || null;
+  }
+
+  const direto = (((ABS_MOTIVO_POR_SUPERVISOR_DAILY[turno] || {})[data] || {})[filtro.chave]);
+  if (direto) return direto;
+
+  const total = {};
+  let encontrou = false;
+  const tls = FILTROS_ABS.tlsPorSupervisor[filtro.chave] || [];
+  tls.forEach(tl => {
+    const motivos = (((ABS_MOTIVO_POR_TL_DAILY[turno] || {})[data] || {})[tl]);
+    if (!motivos) return;
+    encontrou = true;
+    Object.keys(motivos).forEach(motivo => {
+      total[motivo] = (total[motivo] || 0) + Number(motivos[motivo] || 0);
+    });
+  });
+  return encontrou ? total : null;
+}
+
+function serieAbsSelecionada(datas){
+  const filtro = filtroAbsAtivo();
+  if (!filtro){
+    return getSerie(RAW_DATA, turnoAtual, datas).map(v => v ? Number(v.abs) : null);
+  }
+
+  return datas.map(data => {
+    let ausentes = 0;
+    let escalados = 0;
+    turnosSelecionados().forEach(turno => {
+      const info = infoAbsFiltroNoDia(turno, data, filtro);
+      if (!info) return;
+      ausentes += Number(info.a || 0);
+      escalados += Number(info.e || 0);
+    });
+    return escalados > 0 ? round1(100 * ausentes / escalados) : null;
+  });
+}
+
+function motivosAbsSelecionados(datas){
+  const filtro = filtroAbsAtivo();
+  if (!filtro) return somarOffendersNoPeriodo(ABS_OFFENDERS_DAILY, turnoAtual, datas);
+
+  const total = {};
+  turnosSelecionados().forEach(turno => {
+    datas.forEach(data => {
+      const motivos = motivosAbsFiltroNoDia(turno, data, filtro);
+      if (!motivos) return;
+      Object.keys(motivos).forEach(motivo => {
+        total[motivo] = (total[motivo] || 0) + Number(motivos[motivo] || 0);
+      });
+    });
+  });
+  return total;
+}
+
+function escaladosAbsSelecionados(datas){
+  const filtro = filtroAbsAtivo();
+  if (!filtro) return somarEscaladosNoPeriodo(turnoAtual, datas);
+
+  let total = 0;
+  turnosSelecionados().forEach(turno => {
+    datas.forEach(data => {
+      const info = infoAbsFiltroNoDia(turno, data, filtro);
+      if (info) total += Number(info.e || 0);
+    });
+  });
+  return total;
+}
+
 function limparMotivo(str){
-  return str.replace(/^[A-Z0-9]{2,5}\s*-\s*/, '');
+  return String(str || '').replace(/^[A-Z0-9]{2,5}\s*-\s*/, '');
 }
 
 function round1(v){ return Math.round(v * 10) / 10; }
 
-// Quebra rótulos longos em até 2 linhas (Chart.js aceita array de strings
-// por tick) — evita cortar o texto do motivo no pareto.
 function wrapLabel(str, maxLen){
+  str = String(str || '');
   if (str.length <= maxLen) return str;
   const meio = str.lastIndexOf(' ', maxLen);
   const corte = meio > 10 ? meio : maxLen;
-  return [str.slice(0, corte), str.slice(corte).trim()];
+  return [str.slice(0,corte), str.slice(corte).trim()];
 }
 
 const glowPlugin = {
-  id: 'glow',
+  id:'glow',
   beforeDatasetDraw(chart, args){
     const ds = chart.data.datasets[args.index];
     if (ds.glow){
@@ -909,37 +732,53 @@ const glowPlugin = {
     if (ds.glow) chart.ctx.restore();
   }
 };
+
 Chart.register(glowPlugin);
 Chart.register(ChartDataLabels);
-Chart.defaults.set('plugins.datalabels', { display: false });
+Chart.defaults.set('plugins.datalabels', { display:false });
+const fontBase = { family:'Inter', size:10 };
 
-const fontBase = { family: 'Inter', size: 10 };
-
-function destruir(id){ if (charts[id]) { charts[id].destroy(); delete charts[id]; } }
+function destruir(id){
+  if (charts[id]){
+    charts[id].destroy();
+    delete charts[id];
+  }
+}
 
 function renderDotOot(datas){
   destruir('dotOot');
-  const dotSerie = getSerie(RAW_DATA, turnoAtual, datas).map(v => v ? v.dot : null);
-  const ootSerie = getSerie(RAW_DATA, turnoAtual, datas).map(v => v ? v.oot : null);
-  // OOT agora é a barra principal (base, amarela); DOT vira o excedente
-  // empilhado por cima, só quando DOT > OOT naquele dia (senão o excedente
-  // é 0 e não aparece — é o esperado, e não um bug).
-  const excedente = ootSerie.map((o,i) => (o!=null && dotSerie[i]!=null) ? Math.max(0, dotSerie[i]-o) : null);
+  const dotSerie = getSerie(RAW_DATA, turnoAtual, datas).map(v => v ? Number(v.dot) : null);
+  const ootSerie = getSerie(RAW_DATA, turnoAtual, datas).map(v => v ? Number(v.oot) : null);
+  const excedente = ootSerie.map((o,i) =>
+    (o !== null && dotSerie[i] !== null) ? Math.max(0, dotSerie[i] - o) : null
+  );
 
   charts.dotOot = new Chart(document.getElementById('chartDotOot'), {
-    type: 'bar',
-    data: {
-      labels: datas.map(fmtLabel),
-      datasets: [
-        { label:'OOT', data: ootSerie, backgroundColor:'#FFD400', borderColor:'#FFD400', borderWidth:1, borderRadius:4, glow:'rgba(255,212,0,.65)', stack:'s',
-          datalabels: { display:true, anchor:'end', align:'top', color:'#111', font:{size:8,weight:'600'}, formatter:v => v!=null ? v.toFixed(1)+'%' : '' } },
-        { label:'DOT (excedente)', data: excedente, backgroundColor:'rgba(17,17,17,0.12)', borderColor:'rgba(17,17,17,0.25)', borderWidth:1, borderRadius:4, stack:'s',
-          datalabels: { display:true, anchor:'end', align:'top', color:'#666', font:{size:8,weight:'600'}, formatter:(v,ctx) => { const d = dotSerie[ctx.dataIndex]; return (v!=null && d!=null) ? d.toFixed(1)+'%' : ''; } } }
+    type:'bar',
+    data:{
+      labels:datas.map(fmtLabel),
+      datasets:[
+        {
+          label:'OOT', data:ootSerie, backgroundColor:'#FFD400', borderColor:'#FFD400',
+          borderWidth:1, borderRadius:4, glow:'rgba(255,212,0,.65)', stack:'s',
+          datalabels:{ display:true, anchor:'end', align:'top', color:'#111', font:{size:8,weight:'600'}, formatter:v => v != null ? v.toFixed(1)+'%' : '' }
+        },
+        {
+          label:'DOT (excedente)', data:excedente, backgroundColor:'rgba(17,17,17,0.12)',
+          borderColor:'rgba(17,17,17,0.25)', borderWidth:1, borderRadius:4, stack:'s',
+          datalabels:{
+            display:true, anchor:'end', align:'top', color:'#666', font:{size:8,weight:'600'},
+            formatter:(v,ctx) => {
+              const d = dotSerie[ctx.dataIndex];
+              return v != null && d != null ? d.toFixed(1)+'%' : '';
+            }
+          }
+        }
       ]
     },
-    options: {
+    options:{
       responsive:true, maintainAspectRatio:false,
-      layout:{ padding:{ top:16 } },
+      layout:{ padding:{top:16} },
       plugins:{
         legend:{display:false},
         annotation:{ annotations:{ target:{
@@ -948,8 +787,8 @@ function renderDotOot(datas){
         }}}
       },
       scales:{
-        y:{ min:60, max:100, ticks:{ font:fontBase, callback:v=>v+'%' }, grid:{color:'#F0F0F0'} },
-        x:{ ticks:{ font:fontBase }, grid:{display:false} }
+        y:{ min:60, max:100, ticks:{font:fontBase, callback:v=>v+'%'}, grid:{color:'#F0F0F0'} },
+        x:{ ticks:{font:fontBase}, grid:{display:false} }
       }
     }
   });
@@ -959,26 +798,22 @@ function renderParetoDelay(datas){
   destruir('paretoDelay');
   const obj = somarOffendersNoPeriodo(DELAY_OFFENDERS_DAILY, turnoAtual, datas);
   const entries = paretoOrdenado(obj);
-  // Denominador do "pp perdido" = total de pacotes expedidos em TODO o
-  // intervalo selecionado (soma diária), não só do último dia.
-  const expedidoDoDia = getSerie(RAW_DATA, turnoAtual, datas)
-    .reduce((s, v) => s + (v ? v.expedido : 0), 0) || null;
+  const expedidoPeriodo = getSerie(RAW_DATA, turnoAtual, datas)
+    .reduce((s,v) => s + (v ? Number(v.expedido || 0) : 0), 0) || null;
 
   charts.paretoDelay = new Chart(document.getElementById('chartParetoDelay'), {
     type:'bar',
     data:{
-      labels: entries.map(e => wrapLabel(limparMotivo(e[0]), 30)),
-      datasets:[{ data: entries.map(e=>e[1]), backgroundColor:'#111', borderRadius:4,
-        datalabels: {
+      labels:entries.map(e => wrapLabel(limparMotivo(e[0]), 30)),
+      datasets:[{
+        data:entries.map(e=>e[1]), backgroundColor:'#111', borderRadius:4,
+        datalabels:{
           display:true, anchor:'end', align:'end', clip:false,
           labels:{
-            valor: { color:'#111', font:{size:9,weight:'600'}, formatter:(v) => v.toLocaleString('pt-BR') },
-            pp: {
+            valor:{ color:'#111', font:{size:9,weight:'600'}, formatter:v => Number(v).toLocaleString('pt-BR') },
+            pp:{
               color:'#D32F2F', font:{size:8,weight:'500'}, offset:34,
-              formatter:(v) => {
-                const pp = expedidoDoDia ? (100*v/expedidoDoDia).toFixed(1) : null;
-                return pp!=null ? '(' + pp + 'pp)' : '';
-              }
+              formatter:v => expedidoPeriodo ? '(' + (100 * v / expedidoPeriodo).toFixed(1) + 'pp)' : ''
             }
           }
         }
@@ -986,11 +821,11 @@ function renderParetoDelay(datas){
     },
     options:{
       indexAxis:'y', responsive:true, maintainAspectRatio:false,
-      layout:{ padding:{ right:60, left:4 } },
-      plugins:{ legend:{display:false} },
+      layout:{ padding:{right:60,left:4} },
+      plugins:{legend:{display:false}},
       scales:{
-        x:{ ticks:{font:fontBase}, grid:{color:'#F0F0F0'} },
-        y:{ ticks:{font:{family:'Inter',size:9}, align:'start', crossAlign:'far', autoSkip:false}, grid:{display:false} }
+        x:{ticks:{font:fontBase},grid:{color:'#F0F0F0'}},
+        y:{ticks:{font:{family:'Inter',size:9},align:'start',crossAlign:'far',autoSkip:false},grid:{display:false}}
       }
     }
   });
@@ -998,24 +833,30 @@ function renderParetoDelay(datas){
 
 function renderAbs(datas){
   destruir('abs');
-  const serie = getSerie(RAW_DATA, turnoAtual, datas).map(v => v ? v.abs : null);
+  const serie = serieAbsSelecionada(datas);
+
   charts.abs = new Chart(document.getElementById('chartAbs'), {
     type:'bar',
-    data:{ labels: datas.map(fmtLabel), datasets:[{ label:'ABS%', data: serie, backgroundColor:'#1E3FFF', borderRadius:4,
-      datalabels: { display:true, anchor:'end', align:'top', color:'#111', font:{size:8,weight:'600'}, formatter:v => v!=null ? v.toFixed(1)+'%' : '' } }] },
+    data:{
+      labels:datas.map(fmtLabel),
+      datasets:[{
+        label:'ABS%', data:serie, backgroundColor:'#1E3FFF', borderRadius:4,
+        datalabels:{ display:true, anchor:'end', align:'top', color:'#111', font:{size:8,weight:'600'}, formatter:v => v != null ? v.toFixed(1)+'%' : '' }
+      }]
+    },
     options:{
       responsive:true, maintainAspectRatio:false,
-      layout:{ padding:{ top:16 } },
+      layout:{padding:{top:16}},
       plugins:{
         legend:{display:false},
-        annotation:{ annotations:{ target:{
+        annotation:{annotations:{target:{
           type:'line', yMin:12, yMax:12, borderColor:'#111', borderWidth:1.5, borderDash:[5,4],
           label:{ display:true, content:'Target 12%', position:'end', font:{size:9}, color:'#111', backgroundColor:'rgba(255,255,255,.85)' }
         }}}
       },
       scales:{
-        y:{ min:0, ticks:{ font:fontBase, callback:v=>v+'%' }, grid:{color:'#F0F0F0'} },
-        x:{ ticks:{ font:fontBase }, grid:{display:false} }
+        y:{min:0,ticks:{font:fontBase,callback:v=>v+'%'},grid:{color:'#F0F0F0'}},
+        x:{ticks:{font:fontBase},grid:{display:false}}
       }
     }
   });
@@ -1023,53 +864,69 @@ function renderAbs(datas){
 
 function renderParetoAbs(datas){
   destruir('paretoAbs');
-  const contagens = somarOffendersNoPeriodo(ABS_OFFENDERS_DAILY, turnoAtual, datas);
-  const escaladosPeriodo = somarEscaladosNoPeriodo(turnoAtual, datas);
-  // Converte contagem bruta em PERCENTUAL sobre o total de escalados do
-  // mesmo período — a soma das fatias bate exatamente com o ABS% agregado
-  // do intervalo selecionado (mesma conta oficial: motivo ÷ escalados).
+  const contagens = motivosAbsSelecionados(datas);
+  const escaladosPeriodo = escaladosAbsSelecionados(datas);
   const pctObj = {};
+
   Object.keys(contagens).forEach(k => {
     pctObj[k] = escaladosPeriodo > 0 ? round1(100 * contagens[k] / escaladosPeriodo) : 0;
   });
+
   const entries = paretoOrdenado(pctObj);
   charts.paretoAbs = new Chart(document.getElementById('chartParetoAbs'), {
     type:'bar',
     data:{
-      labels: entries.map(e => wrapLabel(limparMotivo(e[0]), 30)),
-      datasets:[{ data: entries.map(e=>e[1]), backgroundColor:'#111', borderRadius:4,
-        datalabels: { display:true, anchor:'end', align:'end', clip:false, color:'#111', font:{size:9,weight:'600'}, formatter:v => v.toFixed(1)+'%' }
+      labels:entries.map(e => wrapLabel(limparMotivo(e[0]), 30)),
+      datasets:[{
+        data:entries.map(e=>e[1]), backgroundColor:'#111', borderRadius:4,
+        datalabels:{ display:true, anchor:'end', align:'end', clip:false, color:'#111', font:{size:9,weight:'600'}, formatter:v => Number(v).toFixed(1)+'%' }
       }]
     },
     options:{
       indexAxis:'y', responsive:true, maintainAspectRatio:false,
-      layout:{ padding:{ right:36, left:4 } },
-      plugins:{ legend:{display:false} },
+      layout:{padding:{right:36,left:4}},
+      plugins:{legend:{display:false}},
       scales:{
-        x:{ ticks:{font:fontBase, callback:v=>v+'%'}, grid:{color:'#F0F0F0'} },
-        y:{ ticks:{font:{family:'Inter',size:9}, align:'start', crossAlign:'far', autoSkip:false}, grid:{display:false} }
+        x:{ticks:{font:fontBase,callback:v=>v+'%'},grid:{color:'#F0F0F0'}},
+        y:{ticks:{font:{family:'Inter',size:9},align:'start',crossAlign:'far',autoSkip:false},grid:{display:false}}
       }
     }
   });
 }
 
-function renderEntrevista(datas){
+function renderEntrevista(){
   destruir('entrevista');
-  const fim = datas[datas.length-1];
-  const obj = (ENTREVISTA[turnoAtual] || ENTREVISTA.ALL || {})[fim] || { tlsTotal:0, tlsComPendencia:0 };
-  const total = obj.tlsTotal || 0;
-  const pendentes = obj.tlsComPendencia || 0;
-  const completos = Math.max(0, total - pendentes);
-  const pct = total > 0 ? Math.round(100 * completos / total) : 100;
-  document.getElementById('entrevistaPct').textContent = pct + '%';
+  const pctEl = document.getElementById('entrevistaPct');
+  const legendaEl = document.getElementById('entrevistaLegenda');
+  const filtroAtivo = Boolean(supervisorAtual || tlAtual);
 
+  if (filtroAtivo){
+    pctEl.textContent = 'N/D';
+    legendaEl.textContent = 'com filtro';
+    charts.entrevista = new Chart(document.getElementById('chartEntrevista'), {
+      type:'doughnut',
+      data:{labels:['Indisponível'],datasets:[{data:[1],backgroundColor:['#E6E7EA'],borderWidth:0}]},
+      options:{responsive:true,maintainAspectRatio:false,cutout:'72%',plugins:{legend:{display:false},tooltip:{enabled:false}}}
+    });
+    return;
+  }
+
+  const snapshot = ultimoSnapshot(ENTREVISTA, turnoAtual);
+  const obj = snapshot ? snapshot.val : {tlsTotal:0,tlsComPendencia:0};
+  const total = Number(obj.tlsTotal || 0);
+  const pendentes = Number(obj.tlsComPendencia || 0);
+  const completos = Math.max(0, total - pendentes);
+  const pct = total > 0 ? Math.round(100 * completos / total) : 0;
+
+  pctEl.textContent = total > 0 ? pct + '%' : '—';
+  legendaEl.textContent = 'completo';
   charts.entrevista = new Chart(document.getElementById('chartEntrevista'), {
     type:'doughnut',
-    data:{ labels:['Sem pendência','Com pendência'], datasets:[{ data: total>0 ? [completos, pendentes] : [1,0], backgroundColor:['#1E3FFF','#E6E7EA'], borderWidth:0 }] },
-    options:{
-      responsive:true, maintainAspectRatio:false, cutout:'72%',
-      plugins:{ legend:{display:false}, tooltip:{enabled:true} }
-    }
+    data:{
+      labels:['Sem pendência','Com pendência'],
+      datasets:[{data:total > 0 ? [completos,pendentes] : [1,0],backgroundColor:['#1E3FFF','#E6E7EA'],borderWidth:0}]
+    },
+    options:{responsive:true,maintainAspectRatio:false,cutout:'72%',plugins:{legend:{display:false},tooltip:{enabled:total>0}}}
   });
 }
 
@@ -1077,52 +934,86 @@ function renderParetoTroca(datas){
   destruir('paretoTroca');
   const obj = somarOffendersNoPeriodo(TROCA_TRANSPORTADORA_DAILY, turnoAtual, datas);
   const entries = paretoOrdenado(obj);
+
   charts.paretoTroca = new Chart(document.getElementById('chartParetoTroca'), {
     type:'bar',
     data:{
-      labels: entries.map(e => wrapLabel(e[0], 30)),
-      datasets:[{ data: entries.map(e=>e[1]), backgroundColor:'#111', borderRadius:4,
-        datalabels: { display:true, anchor:'end', align:'end', clip:false, color:'#111', font:{size:9,weight:'600'}, formatter:v => v.toLocaleString('pt-BR') }
+      labels:entries.map(e => wrapLabel(e[0],30)),
+      datasets:[{
+        data:entries.map(e=>e[1]), backgroundColor:'#111', borderRadius:4,
+        datalabels:{display:true,anchor:'end',align:'end',clip:false,color:'#111',font:{size:9,weight:'600'},formatter:v=>Number(v).toLocaleString('pt-BR')}
       }]
     },
     options:{
-      indexAxis:'y', responsive:true, maintainAspectRatio:false,
-      layout:{ padding:{ right:44, left:4 } },
-      plugins:{ legend:{display:false} },
+      indexAxis:'y',responsive:true,maintainAspectRatio:false,
+      layout:{padding:{right:44,left:4}},
+      plugins:{legend:{display:false}},
       scales:{
-        x:{ ticks:{font:fontBase}, grid:{color:'#F0F0F0'} },
-        y:{ ticks:{font:{family:'Inter',size:9}, align:'start', crossAlign:'far', autoSkip:false}, grid:{display:false} }
+        x:{ticks:{font:fontBase},grid:{color:'#F0F0F0'}},
+        y:{ticks:{font:{family:'Inter',size:9},align:'start',crossAlign:'far',autoSkip:false},grid:{display:false}}
       }
     }
   });
 }
 
-function renderTudo(){
-  const inicio = document.getElementById('dataInicio').value;
-  const fim = document.getElementById('dataFim').value;
-  const datas = datasNoIntervalo(inicio, fim);
+function descricaoFiltroAbs(){
+  if (tlAtual) return supervisorAtual + ' / ' + tlAtual;
+  if (supervisorAtual) return supervisorAtual + ' / todos os TLs';
+  return 'todos os supervisores e TLs';
+}
 
+function dataHoraPtBr(valor){
+  if (!valor) return '—';
+  const data = new Date(valor);
+  return Number.isNaN(data.getTime()) ? String(valor) : data.toLocaleString('pt-BR');
+}
+
+function renderTudo(){
+  const inicioEl = document.getElementById('dataInicio');
+  const fimEl = document.getElementById('dataFim');
+  let inicio = inicioEl.value;
+  let fim = fimEl.value;
+
+  if (!inicio || !fim) return;
+  if (inicio > fim){
+    fim = inicio;
+    fimEl.value = fim;
+  }
+
+  const datas = datasNoIntervalo(inicio, fim);
+  const turnoLabel = turnoAtual === 'ALL' ? 'Todos' : turnoAtual;
   document.getElementById('periodoLabel').textContent =
-    'Turno ' + turnoAtual + ' · ' + fmtLabel(inicio) + ' a ' + fmtLabel(fim);
-  document.getElementById('geradoEm').textContent = new Date().toLocaleString('pt-BR');
+    'Turno ' + turnoLabel + ' · ' + fmtLabel(inicio) + ' a ' + fmtLabel(fim) +
+    ' · ABS: ' + descricaoFiltroAbs();
+  document.getElementById('geradoEm').textContent = dataHoraPtBr(payloadAtual.geradoEm);
 
   const temReal = ultimoDisponivel(RAW_DATA, turnoAtual, datas);
-  document.getElementById('avisoDados').textContent = temReal
-    ? 'Dados extraídos do BigQuery/Sheets em 2026-09-14, cobrindo até 2026-09-13 (o dia atual fica incompleto até o fechamento). Paretos somam o intervalo selecionado; Entrevista de ABS é o snapshot mais recente (' + fmtLabel(temReal.data) + ', ainda referente a 09/09 — não recalculado nesta atualização).'
-    : '⚠️ Sem dado para este turno/período — confira o objeto RAW_DATA no início do arquivo.';
+  const aviso = document.getElementById('avisoDados');
+  aviso.className = 'aviso';
+
+  if (temReal){
+    aviso.textContent =
+      'Atualização automática ativa. Cobertura do backend: ' +
+      fmtLabel(payloadAtual.dataInicio || inicio) + ' a ' + fmtLabel(payloadAtual.dataFim || fim) +
+      '. O filtro de Supervisor/TL altera somente ABS% e Pareto de ABS; Entrevista fica N/D quando há filtro específico.';
+  } else {
+    aviso.textContent = '⚠️ Sem dados para este turno/período.';
+  }
 
   renderDotOot(datas);
   renderParetoDelay(datas);
   renderAbs(datas);
   renderParetoAbs(datas);
-  renderEntrevista(datas);
+  renderEntrevista();
   renderParetoTroca(datas);
 }
 
 function montarPills(){
   const wrap = document.getElementById('turnoPills');
+  wrap.innerHTML = '';
   TURNOS.forEach(t => {
     const b = document.createElement('button');
+    b.type = 'button';
     b.className = 'pill' + (t === turnoAtual ? ' active' : '');
     b.textContent = t === 'ALL' ? 'Todos' : t;
     b.onclick = () => {
@@ -1135,30 +1026,140 @@ function montarPills(){
   });
 }
 
+function preencherSupervisores(){
+  const select = document.getElementById('supervisorAbs');
+  select.innerHTML = '';
+  select.appendChild(new Option('Todos os supervisores', ''));
+  FILTROS_ABS.supervisores.forEach(nome => select.appendChild(new Option(nome, nome)));
+  select.disabled = FILTROS_ABS.supervisores.length === 0;
+}
+
+function preencherTls(){
+  const select = document.getElementById('tlAbs');
+  select.innerHTML = '';
+  tlAtual = '';
+
+  if (!supervisorAtual){
+    select.appendChild(new Option('Selecione um Supervisor', ''));
+    select.disabled = true;
+    return;
+  }
+
+  const tls = FILTROS_ABS.tlsPorSupervisor[supervisorAtual] || [];
+  select.appendChild(new Option('Todos os TLs do supervisor', ''));
+  tls.forEach(nome => select.appendChild(new Option(nome, nome)));
+  select.disabled = tls.length === 0;
+}
+
+function atualizarEstadoFiltroAbs(){
+  document.getElementById('limparAbsFiltros').disabled = !(supervisorAtual || tlAtual);
+  const ajuda = document.getElementById('absFiltroAjuda');
+  ajuda.textContent = tlAtual
+    ? 'Exibindo somente o TL selecionado.'
+    : supervisorAtual
+      ? 'Exibindo todos os TLs deste Supervisor. Selecione um TL para detalhar.'
+      : 'O TL é liberado depois que um Supervisor é selecionado.';
+}
+
+function configurarFiltrosAbs(){
+  const supervisor = document.getElementById('supervisorAbs');
+  const tl = document.getElementById('tlAbs');
+  const limpar = document.getElementById('limparAbsFiltros');
+
+  preencherSupervisores();
+  preencherTls();
+  atualizarEstadoFiltroAbs();
+
+  supervisor.addEventListener('change', () => {
+    supervisorAtual = supervisor.value;
+    preencherTls();
+    tl.value = '';
+    atualizarEstadoFiltroAbs();
+    renderTudo();
+  });
+
+  tl.addEventListener('change', () => {
+    tlAtual = tl.value;
+    atualizarEstadoFiltroAbs();
+    renderTudo();
+  });
+
+  limpar.addEventListener('click', () => {
+    supervisorAtual = '';
+    tlAtual = '';
+    supervisor.value = '';
+    preencherTls();
+    atualizarEstadoFiltroAbs();
+    renderTudo();
+  });
+}
+
+function configurarDatas(){
+  const limites = limitesDisponiveis();
+  if (!limites.inicio || !limites.fim){
+    throw new Error('O JSON foi carregado, mas não há datas disponíveis em rawData.');
+  }
+
+  const inicioEl = document.getElementById('dataInicio');
+  const fimEl = document.getElementById('dataFim');
+  inicioEl.min = limites.inicio;
+  inicioEl.max = limites.fim;
+  fimEl.min = limites.inicio;
+  fimEl.max = limites.fim;
+
+  const periodo = ultimos7dias(limites.fim, limites.inicio);
+  inicioEl.value = periodo.inicio;
+  fimEl.value = periodo.fim;
+  inicioEl.addEventListener('change', renderTudo);
+  fimEl.addEventListener('change', renderTudo);
+}
+
 async function exportarPDF(){
-  // windowWidth fixo e largo o suficiente pra sempre disparar o layout de
-  // duas colunas (breakpoint em 601px) — o PDF sai igual à tela do PC,
-  // independente do dispositivo/tamanho de tela de quem estiver exportando.
   const el = document.getElementById('report');
-  const canvas = await html2canvas(el, { scale:2, backgroundColor:'#ffffff', windowWidth:800 });
+  const canvas = await html2canvas(el, {scale:2,backgroundColor:'#ffffff',windowWidth:800});
   const imgData = canvas.toDataURL('image/png');
   const { jsPDF } = window.jspdf;
-  const pxToMm = px => px * 0.264583 / 2; // /2 porque usamos scale:2
+  const pxToMm = px => px * 0.264583 / 2;
   const widthMm = pxToMm(canvas.width);
   const heightMm = pxToMm(canvas.height);
-  const pdf = new jsPDF({ orientation:'p', unit:'mm', format:[widthMm, heightMm] });
-  pdf.addImage(imgData, 'PNG', 0, 0, widthMm, heightMm);
+  const pdf = new jsPDF({orientation:'p',unit:'mm',format:[widthMm,heightMm]});
+  pdf.addImage(imgData,'PNG',0,0,widthMm,heightMm);
   pdf.save('relatorio-operacional.pdf');
 }
 
-(function init(){
-  const { inicio, fim } = ultimos7dias();
-  document.getElementById('dataInicio').value = inicio;
-  document.getElementById('dataFim').value = fim;
-  document.getElementById('dataInicio').addEventListener('change', renderTudo);
-  document.getElementById('dataFim').addEventListener('change', renderTudo);
-  montarPills();
-  renderTudo();
+function mostrarErro(error){
+  const aviso = document.getElementById('avisoDados');
+  aviso.className = 'aviso erro';
+  aviso.textContent =
+    'O painel não conseguiu atualizar.\n' +
+    (error && error.message ? error.message : String(error)) + '\n\n' +
+    'Verifique se APPS_SCRIPT_URL aponta para a implantação /exec, se o Web App está liberado para acesso e se atualizarDados() já foi executada.';
+  document.getElementById('periodoLabel').textContent = 'Backend não conectado';
+}
+
+(async function init(){
+  const aviso = document.getElementById('avisoDados');
+  aviso.className = 'aviso carregando';
+  aviso.textContent = 'Carregando dados atualizados do Apps Script…';
+  document.getElementById('exportBtn').disabled = true;
+
+  try {
+    const url = obterUrlBackend();
+    if (!urlBackendConfigurada(url)){
+      throw new Error('Falta configurar a constante APPS_SCRIPT_URL no início do JavaScript do index.html.');
+    }
+
+    const payload = await carregarJsonp(url);
+    aplicarPayload(payload);
+    montarPills();
+    configurarDatas();
+    configurarFiltrosAbs();
+    document.getElementById('exportBtn').disabled = false;
+    renderTudo();
+  } catch (error){
+    console.error(error);
+    mostrarErro(error);
+  }
 })();
 </script>
 

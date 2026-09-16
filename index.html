@@ -350,20 +350,16 @@
 
   </div>
 
-  <footer>Dados gerados pelo Apps Script em <span id="geradoEm">—</span></footer>
+  <footer>Dados do arquivo dados.js · gerados pelo Apps Script em <span id="geradoEm">—</span></footer>
 
 </div>
 
 <script>
 /* ============================================================================
-   CONFIGURAÇÃO DO BACKEND
-   Cole abaixo a URL do Web App do Apps Script, terminada em /exec.
-   Exemplo: https://script.google.com/macros/s/SEU_DEPLOYMENT_ID/exec
-
-   Também é possível abrir uma vez com ?api=URL_CODIFICADA. O navegador salva a
-   URL localmente para as próximas visitas.
+   DADOS DO PAINEL
+   Este HTML carrega o arquivo ./dados.js publicado na mesma pasta do GitHub.
+   O Apps Script gera esse arquivo a partir da aba DATA_JSON.
 ============================================================================ */
-const APPS_SCRIPT_URL = 'COLE_AQUI_A_URL_DO_WEB_APP_EXEC';
 
 const TURNOS = ['ALL', 'T1', 'T2', 'T3'];
 let turnoAtual = 'ALL';
@@ -391,65 +387,31 @@ function estruturaTurnos(valor, incluiAll){
   return Object.assign(base, valor || {});
 }
 
-function obterUrlBackend(){
-  const params = new URLSearchParams(window.location.search);
-  const viaQuery = (params.get('api') || '').trim();
-
-  if (viaQuery){
-    try { localStorage.setItem('painelAppsScriptUrl', viaQuery); } catch (_) {}
-    return viaQuery;
-  }
-
-  try {
-    const salva = (localStorage.getItem('painelAppsScriptUrl') || '').trim();
-    if (salva) return salva;
-  } catch (_) {}
-
-  return APPS_SCRIPT_URL.trim();
-}
-
-function urlBackendConfigurada(url){
-  return /^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/(exec|dev)(?:\?|$)/i.test(url) &&
-    !url.includes('COLE_AQUI');
-}
-
-function carregarJsonp(url){
+function carregarDadosLocais(){
   return new Promise((resolve, reject) => {
-    const callback = '__painelCallback_' + Date.now() + '_' + Math.random().toString(36).slice(2);
+    const anterior = document.getElementById('painelDadosScript');
+    if (anterior) anterior.remove();
+
+    // Evita que o navegador reutilize uma versão antiga depois de trocar o
+    // dados.js no GitHub. Como é um <script>, não há problema de CORS.
     const script = document.createElement('script');
-    const separador = url.includes('?') ? '&' : '?';
-    let finalizado = false;
+    script.id = 'painelDadosScript';
+    script.src = './dados.js?_=' + Date.now();
+    script.async = true;
 
-    const limpar = () => {
-      if (script.parentNode) script.parentNode.removeChild(script);
-      try { delete window[callback]; } catch (_) { window[callback] = undefined; }
-    };
-
-    const timer = window.setTimeout(() => {
-      if (finalizado) return;
-      finalizado = true;
-      limpar();
-      reject(new Error('O Apps Script não respondeu dentro do limite de tempo.'));
-    }, 25000);
-
-    window[callback] = dados => {
-      if (finalizado) return;
-      finalizado = true;
-      window.clearTimeout(timer);
-      limpar();
-      resolve(dados);
+    script.onload = () => {
+      const payload = window.PAINEL_DATA;
+      if (!payload || typeof payload !== 'object') {
+        reject(new Error('O arquivo dados.js foi carregado, mas não contém window.PAINEL_DATA.'));
+        return;
+      }
+      resolve(payload);
     };
 
     script.onerror = () => {
-      if (finalizado) return;
-      finalizado = true;
-      window.clearTimeout(timer);
-      limpar();
-      reject(new Error('Não foi possível acessar o Web App do Apps Script.'));
+      reject(new Error('Não foi possível carregar dados.js. Confirme que ele está na mesma pasta do index.html no GitHub.'));
     };
 
-    script.src = url + separador + 'callback=' + encodeURIComponent(callback) + '&_=' + Date.now();
-    script.async = true;
     document.head.appendChild(script);
   });
 }
@@ -492,7 +454,7 @@ function normalizarFiltrosAbs(payload){
 
 function aplicarPayload(payload){
   if (!payload || typeof payload !== 'object' || !payload.rawData){
-    throw new Error('O Web App respondeu, mas o JSON não contém o campo rawData. Execute atualizarDados() no Apps Script.');
+    throw new Error('O dados.js não contém o campo rawData. Execute atualizarDados() no Apps Script e publique o novo dados.js.');
   }
 
   payloadAtual = payload;
@@ -615,7 +577,7 @@ function infoAbsFiltroNoDia(turno, data, filtro){
   const direto = (((ABS_POR_SUPERVISOR_DAILY[turno] || {})[data] || {})[filtro.chave]);
   if (direto) return direto;
 
-  // Compatibilidade: se o backend ainda não publicou absPorSupervisor,
+  // Compatibilidade: se o dados.js ainda não tiver absPorSupervisor,
   // agrega no navegador todos os TLs vinculados ao Supervisor.
   let a = 0;
   let e = 0;
@@ -993,7 +955,7 @@ function renderTudo(){
 
   if (temReal){
     aviso.textContent =
-      'Atualização automática ativa. Cobertura do backend: ' +
+      'Dados carregados do arquivo dados.js. Cobertura disponível: ' +
       fmtLabel(payloadAtual.dataInicio || inicio) + ' a ' + fmtLabel(payloadAtual.dataFim || fim) +
       '. O filtro de Supervisor/TL altera somente ABS% e Pareto de ABS; Entrevista fica N/D quando há filtro específico.';
   } else {
@@ -1131,25 +1093,20 @@ function mostrarErro(error){
   const aviso = document.getElementById('avisoDados');
   aviso.className = 'aviso erro';
   aviso.textContent =
-    'O painel não conseguiu atualizar.\n' +
+    'O painel não conseguiu carregar os dados.\n' +
     (error && error.message ? error.message : String(error)) + '\n\n' +
-    'Verifique se APPS_SCRIPT_URL aponta para a implantação /exec, se o Web App está liberado para acesso e se atualizarDados() já foi executada.';
-  document.getElementById('periodoLabel').textContent = 'Backend não conectado';
+    'No GitHub, confirme que index.html e dados.js estão na mesma pasta. O dados.js deve ser o arquivo mais recente gerado pelo Apps Script.';
+  document.getElementById('periodoLabel').textContent = 'Dados não carregados';
 }
 
 (async function init(){
   const aviso = document.getElementById('avisoDados');
   aviso.className = 'aviso carregando';
-  aviso.textContent = 'Carregando dados atualizados do Apps Script…';
+  aviso.textContent = 'Carregando dados publicados no GitHub…';
   document.getElementById('exportBtn').disabled = true;
 
   try {
-    const url = obterUrlBackend();
-    if (!urlBackendConfigurada(url)){
-      throw new Error('Falta configurar a constante APPS_SCRIPT_URL no início do JavaScript do index.html.');
-    }
-
-    const payload = await carregarJsonp(url);
+    const payload = await carregarDadosLocais();
     aplicarPayload(payload);
     montarPills();
     configurarDatas();
